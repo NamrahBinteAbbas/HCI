@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ask Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light;--page:#f2f6f8;--surface:#fff;--ink:#172733;--muted:#5d6d78;--line:#d7e0e5;--brand:#12637a;--brand-dark:#0c4a5c;--brand-soft:#e8f3f6;--help:#fff8e7;--help-line:#e7bd58;--success:#23764e;--danger:#a52b25;--shadow:0 8px 28px rgba(23,39,51,.07);box-sizing:border-box}
+*,*::before,*::after{box-sizing:inherit}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100vh;padding-bottom:env(safe-area-inset-bottom,0px);color:var(--ink);background:radial-gradient(1000px 360px at 50% -150px,#dceaf0,transparent),var(--page);font:19px/1.55 "Atkinson Hyperlegible",system-ui,sans-serif}
+button,input,select,textarea{font:inherit}
+button{min-height:48px;padding:9px 15px;border:1.5px solid var(--line);border-radius:12px;color:var(--ink);background:var(--surface);cursor:pointer;transition:background .15s,border-color .15s}
+button:hover:not(:disabled){border-color:var(--brand);background:var(--brand-soft)}button:disabled{opacity:.58;cursor:not-allowed}
+button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+button.primary{color:#fff;background:var(--brand);border-color:var(--brand);font-weight:700;box-shadow:0 2px 0 var(--brand-dark)}button.primary:hover:not(:disabled){color:#fff;background:var(--brand-dark)}
+button.big{width:100%;min-height:58px;margin-top:12px;font-size:1.08rem}button.small{min-height:39px;padding:5px 12px;font-size:.9rem}button.grow{flex:1 1 180px}
+.topbar{display:flex;align-items:center;gap:12px;padding:13px max(18px,calc((100vw - 760px)/2));border-bottom:1px solid var(--line);background:rgba(255,255,255,.94);font-size:1.12rem;font-weight:700}
+.logo{display:grid;width:36px;height:36px;place-items:center;border-radius:11px;color:#fff;background:var(--brand)}
+.wrap{width:min(100% - 32px,740px);margin:0 auto;padding:24px 0 110px}[hidden]{display:none!important}
+h1{margin:.1em 0 .35em;font-size:clamp(1.75rem,5vw,2.15rem);line-height:1.16;letter-spacing:-.02em}h2{margin:0 0 9px;font-size:1.08rem}p{margin-top:0}
+.lead,.muted{color:var(--muted)}.lead{margin:0 0 18px}.muted{font-size:.91rem}
+.panel{padding:clamp(18px,4vw,26px);border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:var(--shadow)}.welcome{margin-top:18px}
+.error{min-height:1.4em;margin:9px 0 0;color:var(--danger);font-size:.92rem}
+label{display:block;margin:12px 0;font-weight:700}label.inline{display:flex;align-items:flex-start;gap:12px;font-weight:400}label.inline input{flex:0 0 22px;width:22px;height:22px;margin:5px 0 0;accent-color:var(--brand)}
+textarea,input[type=text],select{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:13px;color:var(--ink);background:#fff;margin-top:5px}
+textarea{min-height:112px;resize:vertical;line-height:1.5}.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:11px}
+.progress-bar{display:flex;flex-wrap:wrap;align-items:center;gap:11px;margin-bottom:14px;padding:11px 14px;border:1px solid var(--line);border-radius:15px;background:var(--surface)}
+.task-dots{display:inline-flex;gap:6px}.task-dots i{width:11px;height:11px;border:2px solid var(--line);border-radius:50%;background:#fff}.task-dots i.complete{border-color:var(--success);background:var(--success)}.task-dots i.current{border-color:var(--brand);background:var(--brand)}
+.controls{display:flex;gap:7px;margin-left:auto}.level{color:var(--muted);font-size:.9rem}.meter{display:inline-flex;gap:4px;margin-left:5px;vertical-align:middle}.meter i{width:17px;height:7px;border-radius:5px;background:var(--line)}.meter i.on{background:var(--brand)}
+.task-card{margin-bottom:15px;padding:17px 19px;border:1px solid var(--line);border-left:6px solid var(--brand);border-radius:15px;background:var(--surface);box-shadow:0 4px 16px rgba(23,39,51,.045);font-size:1.08rem}
+#chat{display:flex;flex-direction:column;gap:11px;margin-bottom:14px}
+.message{max-width:96%;padding:13px 16px;border:1px solid var(--line);border-radius:16px;background:var(--surface);animation:appear .2s ease}
+.message.user{align-self:flex-end;border-color:var(--brand);border-bottom-right-radius:4px;color:#fff;background:var(--brand)}.message.assistant{align-self:flex-start;border-bottom-left-radius:4px}
+.message p{margin:5px 0}.message ul{margin:7px 0 8px 22px;padding:0}.message li{margin:4px 0}
+.support-box{margin-bottom:13px;padding:14px 16px;border:1px solid var(--help-line);border-left:6px solid var(--help-line);border-radius:14px;background:var(--help);animation:appear .2s ease}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chip{border-radius:999px}.checklist{margin:0 0 10px;padding:0;list-style:none}.checklist li{display:flex;gap:9px;margin:4px 0}.checklist b{width:22px;text-align:center}.done{color:var(--success)}
+.toast{position:fixed;z-index:30;right:12px;bottom:18px;left:12px;display:none;align-items:center;flex-wrap:wrap;gap:10px;width:min(680px,calc(100% - 24px));margin:auto;padding:12px 14px;border-radius:14px;color:#fff;background:var(--ink);box-shadow:0 10px 30px rgba(20,34,46,.25)}
+.toast.show{display:flex}.toast span{flex:1}.toast button{min-height:38px;border-color:#fff;color:#fff;background:transparent}
+.question{margin:14px 0;padding-bottom:13px;border-bottom:1px solid var(--line)}.question input[type=range]{width:100%;height:32px;accent-color:var(--brand)}.question select{width:auto;min-width:130px;max-width:100%}
+#research-tools{position:fixed;z-index:20;right:12px;bottom:12px;width:min(430px,calc(100vw - 24px));max-height:70vh;overflow:auto;padding:5px 12px;border:1px solid var(--line);border-radius:13px;background:#fff;box-shadow:0 10px 34px rgba(20,34,46,.22);font-size:.85rem}
+#research-tools summary{display:flex;min-height:32px;align-items:center;cursor:pointer;font-weight:700}.pt{width:100%;border-collapse:collapse;margin:6px 0}.pt td,.pt th{padding:3px 6px;border-bottom:1px solid var(--line);text-align:left}
+@keyframes appear{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media(max-width:560px){body{font-size:18px}.wrap{width:min(100% - 24px,740px);padding-top:18px}.controls{width:100%;margin-left:0}.controls button{flex:1}.message{max-width:100%}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style></head>
+<body>
+<header class="topbar"><span class="logo" aria-hidden="true">A</span><span>Ask Assistant</span></header>
+<main class="wrap">
+
+<section id="s-setup" class="screen"><div class="panel welcome">
+<h1>Welcome</h1>
+<p class="lead">Ask the assistant for help with everyday things, like writing a message or understanding a topic. First, a quick typing warm-up so the app can learn how you type.</p>
+<label for="pid">Your participant ID<input type="text" id="pid" placeholder="For example P001" autocomplete="off" maxlength="20"></label>
+<label class="inline"><input type="checkbox" id="consent"><span>I agree to take part, and for my typing and answers to be recorded for research.</span></label>
+<button class="primary big" id="go">Get started</button><p class="error" id="err" role="alert"></p>
+</div></section>
+
+<section id="s-cal" class="screen" hidden>
+<h1>Typing warm-up <span class="muted" id="calN"></span></h1>
+<p class="task-card" id="calTxt"></p>
+<textarea id="calIn" aria-label="Warm-up text" autocomplete="off"></textarea>
+<div class="row"><button class="primary grow" id="calDone">Done, next</button></div>
+<p class="muted">There is no right or wrong. Type at your normal speed.</p>
+</section>
+
+<section id="s-intro" class="screen" hidden><div class="panel welcome">
+<h1 id="inT"></h1><p class="lead" id="inP"></p><button class="primary big" id="inGo">Start</button>
+</div></section>
+
+<section id="s-task" class="screen" hidden>
+<div class="progress-bar"><strong id="tk"></strong><span class="task-dots" id="dots"></span><span class="level" id="lvl"></span>
+<span class="controls" id="ctl"><button class="small" id="less">Less help</button><button class="small" id="more">More help</button></span></div>
+<div class="task-card" id="tt"></div>
+<div id="chat" aria-live="polite"></div>
+<div id="offer" class="support-box" hidden><strong>This might be tricky.</strong> Would you like some extra help?
+<div class="row"><button class="primary small" id="oy">Yes, please</button><button class="small" id="on">No thanks</button></div></div>
+<div id="scaf"></div>
+<label for="inp" class="muted" style="font-weight:400">Type your question for the assistant</label>
+<textarea id="inp" autocomplete="off" placeholder="Type your question here..."></textarea>
+<div class="row"><button class="primary grow" id="send">Send</button><button id="stuck">I'm stuck</button></div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastT"></span><button id="undo">Undo</button><button id="tOk">Got it</button></div>
+</section>
+
+<section id="s-fb" class="screen" hidden><h1>About that round</h1><div id="fbq"></div><button class="primary" id="fbDone">Next</button></section>
+<section id="s-final" class="screen" hidden><h1>Final questions</h1><div id="fq"></div><button class="primary" id="fqDone">Finish</button></section>
+<section id="s-end" class="screen" hidden><div class="panel welcome"><h1>Thank you!</h1><p class="lead">You are all done. Your answers have been saved.</p></div></section>
+
+<details id="research-tools" hidden><summary>Researcher tools (F9 to hide)</summary>
+<p class="muted" id="sig">No signals yet.</p><p class="error" id="store"></p>
+<div class="row"><button class="primary small" id="expAll">Export CSV (all participants)</button><button class="small" id="expJson">Backup JSON</button></div>
+<div class="row"><button class="small" id="obs">Observer: struggle now (F8)</button><button class="small" id="skip">Skip round</button></div>
+<div class="row"><button class="small" id="testApi">Test AI connection</button><button class="small" id="listModels">List my models</button></div><p class="muted" id="testOut"></p>
+<div id="chk"></div><div id="plist"></div></details>
+</main>
+
+<script>
+"use strict";
+// ============================ 1. CONFIGURATION ============================
+const AI_MODEL = "gemini-3.6-flash";
+const AI_FALLBACK_MODEL = "gemini-2.5-flash";
+const REASONING_EFFORT = "";
+const ENABLE_PROMPT_JUDGE=false;
+const MAX_API_ATTEMPTS=4,RETRY_DELAYS_MS=[1500,3000,6000];
+const $=id=>document.getElementById(id),now=()=>performance.now();
+const CFG={pauseMin:2000,longPause:5000,win:30000,tick:5000,zAsk:1,k:2,cool:45000,offerTO:15000,minKeys:8,outMs:90000};
+const SUPPORT=["Off","Light","Guided","Step-by-step"];
+const COND_NAME={A:"A: No guidance (control)",B:"B: Adaptive support",C:"C: Fixed guided support",PRE:"Unassisted pre-test",POST:"Unassisted post-test"};
+const DESC={A:"no extra tips",B:"tips that changed as I typed",C:"the same tips shown all the time"};
+const ORDERS=["ABC","ACB","BAC","BCA","CAB","CBA"];
+const THEMES=["E-NEIGHBOUR","E-MEAL","E-VIDEO"];
+const TASKS={
+"E-NEIGHBOUR":{v:"1",t:"Your neighbour often leaves rubbish outside your door. Ask the assistant to help you write a polite message to them.",c:["Prompt states the goal (a message about the rubbish)","Prompt gives context (who it is for, what happens)","Prompt asks for a format or tone (short, polite)"]},
+"E-MEAL":{v:"1",t:"You want to cook a healthy dinner for two using chicken and rice. Ask the assistant to help you.",c:["Prompt states the goal (a healthy chicken and rice dinner)","Prompt gives context (two people)","Prompt asks for a format (steps, ingredients, simple)"]},
+"E-VIDEO":{v:"1",t:"You want to video call your grandchild. Ask the assistant to explain how to set it up.",c:["Prompt states the goal (set up a video call)","Prompt gives context (device or app, beginner)","Prompt asks for a format (step by step, simple words)"]},
+"PP-BANK":{v:"pair-a",t:"You have moved to a new home and need to tell your bank. Ask the assistant to help you write a short email.",c:["Prompt states the goal (email about a change of address)","Prompt gives context (who it is for, why)","Prompt asks for a format or tone (short, polite)"]},
+"PP-REPAIR":{v:"pair-b",t:"A tap in your kitchen is leaking. Ask the assistant to help you write a short message to a plumber.",c:["Prompt states the goal (message asking for a repair)","Prompt gives context (who it is for, what is wrong)","Prompt asks for a format or tone (short, polite)"]}};
+const STARTERS=["Help me write a message to ___","Explain ___ in simple words","Give me steps to ___"];
+const WIZARD_STEPS=[{q:"What do you want help with?",options:["Writing something","Understanding something","Planning something","Making something"]},{q:"Who is it for, or why do you need it?",options:["For myself","For a family member","For a neighbour or friend","For an office or bank"]},{q:"How should the answer look?",options:["Short and simple","Step by step","A bulleted list","One paragraph"]}];
+const INTRO={PRE:"In this round the assistant will help you with an everyday task. Write your question the way you normally would. No extra tips will appear.",A:"In this round no extra tips will appear. Write your question the way you normally would.",B:"In this round helpful tips may appear while you write. You can ask for more or less help at any time.",C:"In this round helpful tips are shown while you write.",POST:"In this last round the assistant will help you with another everyday task. Write your question the way you normally would. No extra tips will appear."};
+const ASSISTANT_INSTRUCTIONS='You help older adults use AI. Answer the user\'s request in plain, friendly English. If the request is too vague to answer well, ask ONE short clarifying question. Return only valid JSON with this shape: {"full":"3 to 6 short plain-English sentences","simple":["3 to 4 very short points or steps"]}.';
+const JUDGE_INSTRUCTIONS='Rate the user\'s prompt to an AI assistant. goal: says clearly what is wanted (0 or 1). audience: says who it is for or why (0 or 1). format: says how the answer should look (0 or 1). Return only JSON: {"goal":0,"audience":0,"format":0}.';
+
+const S={P:null,RI:-1,cur:null,pos:0,label:"setup",cond:"",task:"",mode:"A",level:0,streak:0,probe:false,cool:0,out:0,cons:0,maxIdx:0,ep:null,last:0,keys:[],thr:2000,busy:false,wiz:0,ans:["","",""],offer:false,undo:null,lastSub:null,idx:0,B:null,roundStart:0};
+let st=0,otm=0,calI=0,calSegs=[];
+
+// ============================ 2. STORAGE ============================
+const IDXK="ass2_index",PK="ass2_p_";
+function idxList(){try{return JSON.parse(localStorage.getItem(IDXK)||"[]")}catch(e){return[]}}
+function loadP(p){try{return JSON.parse(localStorage.getItem(PK+p))}catch(e){return null}}
+function allP(){return idxList().map(loadP).filter(Boolean)}
+function persist(imm){const P=S.P;if(!P)return;clearTimeout(st);
+ const f=()=>{try{localStorage.setItem(PK+P.pid,JSON.stringify(P));const l=idxList();if(!l.includes(P.pid)){l.push(P.pid);localStorage.setItem(IDXK,JSON.stringify(l))}$("store").textContent=""}catch(e){$("store").textContent="WARNING: could not save in browser storage ("+e.message+")."}};
+ imm?f():st=setTimeout(f,1000)}
+function log(name,d){const P=S.P;if(!P)return;P.ev.push([Date.now(),name,S.pos,S.label,S.cond,S.task,S.level,d===undefined?null:d]);persist()}
+function showScreen(id){document.querySelectorAll(".screen").forEach(s=>s.hidden=s.id!==id)}
+function mk(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+function addChip(parent,label,fn){const b=mk("button","chip small",label);b.type="button";b.addEventListener("click",fn);parent.appendChild(b)}
+function esc(v){const d=document.createElement("div");d.textContent=String(v==null?"":v);return d.innerHTML}
+
+// ============================ 3. AI API (Simplified Relative Path Calls) ============================
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+
+async function callAI(prompt, system, onRetry = () => {}, model = AI_MODEL) {
+const body = {
+    model,
+    messages: [
+        { role: "system", content: system },
+        { role: "user", content: prompt }
+    ]
+};
+
+for (let a = 1; a <= MAX_API_ATTEMPTS; a++) {
+    let res, data;
+
+    try {
+        // SIMPLIFIED CALL: Relative path to backend endpoint on the same server
+        res = await fetch("/api/chat", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
+        });
+
+        data = await res.json().catch(() => ({}));
+
+    } catch (e) {
+        if (a === MAX_API_ATTEMPTS) {
+            throw new Error("Backend connection failed: " + e.message);
+        }
+
+        const d = RETRY_DELAYS_MS[a - 1] ?? 6000;
+        onRetry(a + 1, d, "Backend connection failed");
+        await wait(d);
+        continue;
+    }
+
+    if (!res.ok) {
+        const m = "HTTP " + res.status + ": " + (data?.error || "Unknown API error");
+        const quota = res.status === 429 && /quota|billing/i.test(m);
+
+        if (quota || ![429, 500, 502, 503, 504].includes(res.status) || a === MAX_API_ATTEMPTS) {
+            throw new Error(m);
+        }
+
+        const d = RETRY_DELAYS_MS[a - 1] ?? 6000;
+        onRetry(a + 1, d, m);
+        await wait(d);
+        continue;
+    }
+
+    const text = data?.choices?.[0]?.message?.content?.trim();
+
+    if (!text) {
+        throw new Error("The assistant returned an empty response.");
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch {
+        throw new Error("The assistant returned invalid JSON.");
+    }
+}
+
+throw new Error("The assistant could not complete the request.");
+}
+
+async function callWithFallback(prompt,system,onRetry=()=>{}){
+ try{S.usedModel=AI_MODEL;return await callAI(prompt,system,onRetry,AI_MODEL)}
+ catch(e){if(AI_FALLBACK_MODEL&&/HTTP (429|5\d\d)|Network/.test(e.message)&&!/quota|billing/i.test(e.message)){S.usedModel=AI_FALLBACK_MODEL;onRetry(0,0,"Switching to backup model after: "+e.message);return await callAI(prompt,system,onRetry,AI_FALLBACK_MODEL)}throw e}}
+
+function explainApiError(m){
+ if(/quota|billing/i.test(m))return"The Google Gemini API quota or rate limit was reached. Please tell the researcher.";
+ if(/HTTP 5\d\d/.test(m))return"The assistant service is busy ("+m.slice(0,9)+"). Please wait a moment and press Send again.";
+ if(/HTTP 429/.test(m))return"The Gemini API rate limit was exceeded. Please wait a moment and press Send again.";
+ if(/HTTP 401/.test(m))return"Gemini could not accept the API key. Please tell the researcher.";
+ if(/HTTP 403/.test(m))return"This API key does not have access to that model. Please tell the researcher. Details: "+m;
+ if(/HTTP 404/.test(m))return"Gemini could not find the configured model. Please tell the researcher. Details: "+m;
+ if(/HTTP 400/.test(m))return"Gemini rejected the request settings. Please tell the researcher. Details: "+m;
+ return m}
+
+// ============================ 4. KEYSTROKES ============================
+function onKey(e){const c=e.key==="Backspace"||e.key==="Delete"?"b":e.key===" "?"s":e.key==="Enter"?"n":e.key.length===1?"c":"o";if(c==="o")return;
+ const t=now(),g=S.last?Math.round(t-S.last):null;S.last=t;S.keys.push({t,c});const cur=S.cur;
+ if(cur&&S.pos>0){cur.keys++;if(c==="b")cur.bs++}
+ if(S.ep&&S.ep.first===null){S.ep.first=t;if(cur&&cur.firstKeyMs===null)cur.firstKeyMs=Math.round(t-S.roundStart);log("first_key",{latency:Math.round(t-S.ep.start)})}
+ log("key",{c,g})}
+$("calIn").addEventListener("keydown",onKey);$("inp").addEventListener("keydown",onKey);
+
+// ============================ 5. TYPING FEATURES ============================
+function feat(keys,w0,w1,ongoing){const k=keys.filter(x=>x.t>=w0&&x.t<=w1);if(!k.length)return null;let pt=0,cur=0,dl=0;const b=[];
+ k.forEach((x,i)=>{if(i){const g=x.t-k[i-1].t;if(g>=S.thr){pt+=g;b.push(cur);cur=0}}if(x.c==="b")dl++;else if(x.c==="c"||x.c==="s")cur++});b.push(cur);
+ const idle=w1-k[k.length-1].t;if(ongoing&&idle>=S.thr)pt+=idle;
+ return{n:k.length,pf:pt/Math.max(w1-k[0].t,1000),bm:b.reduce((a,c)=>a+c,0)/b.length,d:dl/k.length}}
+function ms(a,fl){if(!a.length)return{m:0,s:1};const m=a.reduce((x,y)=>x+y,0)/a.length,s=Math.sqrt(a.reduce((x,y)=>x+(y-m)*(y-m),0)/a.length);return{m,s:Math.max(s,fl(m))}}
+function calShow(){const T=["Copy this sentence: The sun rises early in the morning.","Copy this sentence: My friend likes tea with a little milk.","Type one sentence about what you did yesterday."];
+ $("calTxt").textContent=T[calI];$("calIn").value="";S.keys=[];S.last=0;$("calN").textContent="("+(calI+1)+" of 3)";$("calIn").focus()}
+$("calDone").addEventListener("click",()=>{if(S.keys.length<5){alert("Please type a little more before continuing.");return}
+ calSegs.push(S.keys.slice());log("calibration_segment",{keyCount:S.keys.length});calI++;if(calI<3)calShow();else finishCalibration()});
+function finishCalibration(){const gaps=[];calSegs.forEach(sg=>sg.forEach((x,i)=>{if(i){const g=x.t-sg[i-1].t;if(g<CFG.longPause)gaps.push(g)}}));
+ const g=ms(gaps,()=>0);S.thr=Math.max(CFG.pauseMin,g.m+3*g.s);
+ const F=calSegs.map(sg=>feat(sg,sg[0].t,sg[sg.length-1].t,false)).filter(Boolean);
+ S.B={pf:ms(F.map(f=>f.pf),()=>0.05),bm:ms(F.map(f=>f.bm),x=>Math.max(0.25*x,2)),d:ms(F.map(f=>f.d),()=>0.03)};
+ S.P.baseline={avgGapMs:Math.round(g.m),gapSdMs:Math.round(g.s),pauseThresholdMs:Math.round(S.thr),pauseFractionMean:+S.B.pf.m.toFixed(3),pauseFractionSd:+S.B.pf.s.toFixed(3),burstMean:+S.B.bm.m.toFixed(2),burstSd:+S.B.bm.s.toFixed(2),deleteRateMean:+S.B.d.m.toFixed(3),deleteRateSd:+S.B.d.s.toFixed(3)};
+ log("baseline",S.P.baseline);persist(true);S.keys=[];S.last=0;showIntro(0)}
+
+// ============================ 6. PROMPT CHECK AND SUPPORT LEVELS ============================
+function assess(p){const w=p.trim().split(/\s+/).filter(Boolean).length;
+ return{goal:w>=4,context:/\b(for|my|me|i am|i'm|because|so that|neighbo|friend|grand|bank|family|myself|two|plumber|tap)\b/i.test(p),format:/\b(list|steps?|short|simple|bullet|brief|paragraph|polite|email|message|words|ingredients|plan)\b/i.test(p)}}
+function renderSupport(){const m=S.mode;$("ctl").hidden=m!=="B"||S.pos===0;
+ $("lvl").innerHTML=m==="A"?"":"<strong>Support:</strong> "+SUPPORT[S.level]+' <span class="meter">'+[1,2,3].map(l=>'<i class="'+(l<=S.level?"on":"")+'"></i>').join("")+"</span>";
+ const c=$("scaf");c.innerHTML="";if(m==="A")return;
+ if(S.level===0){const b=mk("button","small","Need a hand?");b.addEventListener("click",()=>{log("help_request");changeLevel(1,"You asked for help",false,"manual")});c.appendChild(b);return}
+ const box=mk("div","support-box");
+ if(S.level===1){box.innerHTML='<h2>Ideas to start</h2><div class="chips"></div>';STARTERS.forEach(s=>addChip(box.querySelector(".chips"),s,()=>{$("inp").value=s;log("starter_selected",{starter:s});$("inp").focus()}))}
+ if(S.level===2){const q=assess($("inp").value),it=[["goal","Say what you want"],["context","Say who it is for or why"],["format","Say how the answer should look"]];
+  box.innerHTML='<h2>Make your question clearer</h2><ul class="checklist">'+it.map(([k,l])=>'<li><b class="'+(q[k]?"done":"")+'">'+(q[k]?"✓":"○")+"</b>"+l+"</li>").join("")+'</ul><div class="chips"></div>';
+  [["+ who it is for"," This is for my own use."],["+ short answer"," Please keep it short and simple."],["+ step by step"," Please explain it step by step."]].forEach(([l,a])=>addChip(box.querySelector(".chips"),l,()=>{$("inp").value=($("inp").value+a).trim();log("prompt_detail_added",{label:l});renderSupport()}))}
+ if(S.level===3){const w=WIZARD_STEPS[S.wiz];
+  if(w){box.innerHTML='<h2>Step '+(S.wiz+1)+' of 3</h2><p>'+esc(w.q)+'</p><div class="chips"></div><input id="wizardInput" type="text" aria-label="Your answer" placeholder="Or type your own answer"><div class="row"><button class="small" id="wizardNext">Next</button></div>';
+   w.options.forEach(o=>addChip(box.querySelector(".chips"),o,()=>{box.querySelector("#wizardInput").value=o}));
+   box.querySelector("#wizardNext").addEventListener("click",()=>{const a=box.querySelector("#wizardInput").value.trim();if(!a)return;S.ans[S.wiz]=a;log("wizard_step",{step:S.wiz,answer:a});S.wiz++;
+    if(S.wiz>=3){$("inp").value="I need help with: "+S.ans[0]+". It is "+S.ans[1].toLowerCase()+". Please make the answer: "+S.ans[2].toLowerCase()+".";log("wizard_prompt_created")}renderSupport()})}
+  else{box.innerHTML="<h2>Your question is ready</h2><p>Check it below. You can change any words, then press Send.</p>";const r=mk("button","small","Start over");r.addEventListener("click",()=>{S.wiz=0;S.ans=["","",""];renderSupport()});box.appendChild(r)}}
+ c.appendChild(box)}
+function toast(msg,undo){$("toastT").textContent=msg;S.undo=undo||null;$("undo").hidden=!undo;$("toast").classList.add("show")}
+function changeLevel(n,why,undoable,kind){n=Math.max(0,Math.min(3,n));if(n===S.level)return;const from=S.level;S.level=n;S.wiz=0;S.ans=["","",""];S.streak=0;
+ const c=S.cur;if(c){c.maxLevel=Math.max(c.maxLevel,n);(kind==="manual"||kind==="stuck")?c.manual++:c.system++}
+ log("support_level_changed",{from,to:n,reason:why,kind,index:+(S.idx||0).toFixed(2)});
+ if(undoable)toast("Support "+(n>from?"increased":"reduced")+" to "+SUPPORT[n]+". "+why+".",()=>{S.level=from;S.cool=now()+CFG.cool;if(S.cur)S.cur.undo++;log("support_change_undone",{restoredLevel:from});renderSupport()});
+ renderSupport()}
+$("undo").addEventListener("click",()=>{if(S.undo)S.undo();$("toast").classList.remove("show")});$("tOk").addEventListener("click",()=>$("toast").classList.remove("show"));
+$("more").addEventListener("click",()=>{S.cool=now()+CFG.cool;changeLevel(S.level+1,"You chose",false,"manual")});
+$("less").addEventListener("click",()=>{S.cool=now()+CFG.cool;changeLevel(S.level-1,"You chose",false,"manual")});
+$("stuck").addEventListener("click",()=>{log("stuck_button");if(S.cur)S.cur.stuck++;S.out=now()+CFG.outMs;
+ if(S.mode==="B")changeLevel(S.level+1,"You said you were stuck",true,"stuck");else toast("Noted. Keep going and do your best.")});
+
+// ============================ 7. STRUGGLE DETECTOR ============================
+function tick(){if(S.mode!=="B"||!S.ep||S.ep.first===null||S.busy||!S.B||S.pos===0)return;const t=now(),f=feat(S.keys,Math.max(S.ep.first,t-CFG.win),t,true);if(!f)return;
+ const z={pause:(f.pf-S.B.pf.m)/S.B.pf.s};if(f.n>=CFG.minKeys){z.burst=(S.B.bm.m-f.bm)/S.B.bm.s;z.delete=(f.d-S.B.d.m)/S.B.d.s}
+ const v=Object.values(z),idx=v.reduce((a,c)=>a+Math.max(0,c),0)/v.length;S.idx=idx;S.maxIdx=Math.max(S.maxIdx,idx);S.cons=idx>=CFG.zAsk?S.cons+1:0;
+ log("detector_evaluation",{index:+idx.toFixed(2),z:Object.fromEntries(Object.entries(z).map(([a,b])=>[a,+b.toFixed(2)])),consecutiveHigh:S.cons});
+ $("sig").textContent="Index "+idx.toFixed(2)+" · consecutive high "+S.cons+" · pause threshold "+Math.round(S.thr)+" ms · level "+SUPPORT[S.level];decide()}
+function decide(){if(S.mode!=="B"||now()<S.cool||S.level>=3||S.offer)return;const hi=S.cons>=2,out=now()<S.out;
+ if(hi&&out){S.cool=now()+CFG.cool;changeLevel(S.level+1,"Typing and answers both suggested you might want a hand",true,"automatic")}
+ else if(hi||out)openOffer(hi?"typing":"outcome")}
+function openOffer(r){S.offer=true;$("offer").hidden=false;if(S.cur)S.cur.offers++;log("support_offer_shown",{reason:r});otm=setTimeout(()=>closeOffer("timeout"),CFG.offerTO)}
+function closeOffer(res){clearTimeout(otm);if(!S.offer)return;S.offer=false;$("offer").hidden=true;S.cool=now()+CFG.cool;log("support_offer_response",{response:res});
+ if(res==="yes"){if(S.cur)S.cur.offersYes++;changeLevel(S.level+1,"You accepted the offer",true,"offer")}}
+$("oy").addEventListener("click",()=>closeOffer("yes"));$("on").addEventListener("click",()=>closeOffer("no"));setInterval(tick,CFG.tick);
+
+// ============================ 8. PARTICIPANT SETUP ============================
+function assign(pid,override){const m=pid.match(/(\d+)$/),all=allP();let oi,n;
+ if(m){n=parseInt(m[1],10);oi=((n-1)%6+6)%6}else{const cnt=Array(6).fill(0);all.forEach(p=>cnt[p.orderIdx-1]++);oi=cnt.indexOf(Math.min(...cnt));n=all.length+1}
+ if(override>=1&&override<=6)oi=override-1;
+ const order=ORDERS[oi],tm={A:THEMES[n%3],B:THEMES[(n+1)%3],C:THEMES[(n+2)%3]},pp=n%2?["PP-REPAIR","PP-BANK"]:["PP-BANK","PP-REPAIR"];
+ const plan=[{pos:1,label:"pre-test",cond:"PRE",mode:"A",task:pp[0]}];
+ order.split("").forEach((c,i)=>plan.push({pos:i+2,label:c,cond:c,mode:c,task:tm[c]}));
+ plan.push({pos:5,label:"post-test",cond:"POST",mode:"A",task:pp[1]});
+ return{oi,n,order,plan}}
+$("go").addEventListener("click",()=>{const err=$("err");err.textContent="";const pid=$("pid").value.trim().toUpperCase();
+if (!AI_MODEL) {
+    err.textContent = "The researcher needs to configure the AI model.";
+    return;
+}
+ if(!/^[A-Z0-9_-]{2,20}$/.test(pid)){err.textContent="Please enter your participant ID, using letters and numbers only (for example P001).";return}
+ if(!$("consent").checked){err.textContent="Please tick the consent box to continue.";return}
+ if(loadP(pid)){err.textContent="This ID has already been used. Please check your ID with the researcher.";return}
+ const q=new URLSearchParams(location.search);CFG.zAsk=Number(q.get("z"))||1;CFG.k=Number(q.get("k"))||2;
+ const a=assign(pid,Number(q.get("order"))||0);
+ S.P={schema:2,pid,date:new Date().toISOString(),t0:Date.now(),status:"in_progress",order:a.order.split("").join("-"),orderIdx:a.oi+1,seq:a.n,plan:a.plan,rounds:[],baseline:null,final:null,ev:[],config:{model:AI_MODEL,fallbackModel:AI_FALLBACK_MODEL,reasoningEffort:REASONING_EFFORT,judge:ENABLE_PROMPT_JUDGE,cfg:{...CFG}}};
+ S.pos=0;S.label="calibration";S.cond="";S.task="";S.level=0;S.mode="A";
+ log("session_start",{order:S.P.order,plan:a.plan});persist(true);calI=0;calSegs=[];showScreen("s-cal");calShow()});
+
+// ============================ 9. ROUND FLOW ============================
+function setCtx(pl){S.pos=pl.pos;S.label=pl.label;S.cond=pl.cond;S.task=pl.task;S.mode=pl.mode}
+function showIntro(i){const pl=S.P.plan[i];S.RI=i;setCtx(pl);S.level=0;S.cur=null;showScreen("s-intro");
+ $("inT").textContent="Round "+(i+1)+" of 5";$("inP").textContent=INTRO[pl.cond];log("round_intro")}
+$("inGo").addEventListener("click",()=>startRound(S.RI));
+function startRound(i){const pl=S.P.plan[i],T=TASKS[pl.task];setCtx(pl);
+ S.level=pl.mode==="B"?1:pl.mode==="C"?2:0;S.streak=0;S.cons=0;S.cool=0;S.out=0;S.offer=false;S.probe=false;S.maxIdx=0;$("offer").hidden=true;clearTimeout(otm);$("toast").classList.remove("show");
+ S.cur={pos:pl.pos,round:pl.label,cond:pl.cond,taskId:pl.task,taskVersion:T.v,start:new Date().toISOString(),levelStart:S.level,levelEnd:S.level,maxLevel:S.level,manual:0,system:0,undo:0,stuck:0,offers:0,offersYes:0,keys:0,bs:0,firstKeyMs:null,durMs:null,prompts:[],status:"in_progress",check:[false,false,false],fb:null};
+ S.P.rounds[i]=S.cur;S.roundStart=now();showScreen("s-task");
+ $("tk").textContent="Round "+(i+1)+" of 5";$("dots").innerHTML=[0,1,2,3,4].map(n=>'<i class="'+(n<i?"complete":n===i?"current":"")+'"></i>').join("");
+ $("tt").textContent=T.t;$("chat").innerHTML="";$("inp").value="";S.keys=[];S.last=0;S.ep={start:now(),first:null};S.wiz=0;S.ans=["","",""];
+ $("chk").innerHTML='<p class="muted">Prompt checklist for this round (tick what the participant\'s prompt included):</p>';
+ T.c.forEach((txt,n)=>{const l=mk("label","inline"),cb=document.createElement("input");cb.type="checkbox";cb.addEventListener("change",e=>{S.cur.check[n]=e.target.checked;log("checklist",{index:n,item:txt,achieved:e.target.checked})});l.append(cb,mk("span","",txt));$("chk").appendChild(l)});
+ log("round_start",{taskVersion:T.v,supportLevel:S.level});renderSupport();$("inp").focus()}
+function endRound(reason){const c=S.cur;if(!c)return;c.durMs=Math.round(now()-S.roundStart);c.status=reason==="done"?"completed":"skipped";c.levelEnd=S.level;c.end=new Date().toISOString();
+ log("round_end",{reason,durationMs:c.durMs});clearTimeout(otm);S.offer=false;persist(true);["A","B","C"].includes(c.cond)?showFeedback():nextRound()}
+function nextRound(){S.RI<4?showIntro(S.RI+1):showFinal()}
+$("skip").addEventListener("click",()=>{if(!$("s-task").hidden)endRound("skipped")});
+
+// ============================ 10. CHAT ============================
+$("send").addEventListener("click",sendMessage);
+$("inp").addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))sendMessage()});
+async function sendMessage(){const prompt=$("inp").value.trim();if(!prompt||S.busy||!S.cur)return;
+ const q=assess(prompt),score=+q.goal+ +q.context+ +q.format;S.busy=true;$("send").disabled=true;$("send").textContent="Sending...";
+ const rec={ts:new Date().toISOString(),text:prompt,q:score,qs:q,maxIdx:+S.maxIdx.toFixed(2),keys:S.keys.length,deletes:S.keys.filter(k=>k.c==="b").length,level:S.level,probe:S.probe,resp:null,rating:"",failed:false,ms:null};
+ S.cur.prompts.push(rec);
+ log("prompt_submitted",{text:prompt,qualityScore:score,quality:q,timeSinceFirstKey:S.ep&&S.ep.first?Math.round(now()-S.ep.first):0,maxIndex:rec.maxIdx,probe:S.probe,deleteCount:rec.deletes,keyCount:rec.keys});
+ S.lastSub={qualityScore:score,maxIndex:S.maxIdx};S.probe=false;
+ $("chat").appendChild(mk("div","message user",prompt));$("inp").value="";S.keys=[];S.last=0;S.ep=null;S.cons=0;
+ const box=mk("div","message assistant");box.innerHTML='<p class="muted">Thinking…</p>';$("chat").appendChild(box);box.scrollIntoView({block:"nearest",behavior:"smooth"});
+ if(ENABLE_PROMPT_JUDGE)callAI('Prompt: """'+prompt+'"""',JUDGE_INSTRUCTIONS).then(j=>{rec.judge=j;log("judge",j)}).catch(e=>log("judge_error",{message:e.message}));
+ try{const t0=now(),r=await callWithFallback(prompt,ASSISTANT_INSTRUCTIONS,(n,d,why)=>{$("sig").textContent="Retry "+n+": "+why;console.warn("AI retry",why);if(n===0){box.innerHTML='<p class="muted">Switching to a backup assistant…</p>';return}box.innerHTML='<p class="muted">The assistant is busy ("'+((why.match(/HTTP \d+|Network/)||["error"])[0])+'"). Trying again (attempt '+n+' of '+MAX_API_ATTEMPTS+')…</p>'});
+  rec.ms=Math.round(now()-t0);rec.model=S.usedModel;rec.resp={full:String(r.full||""),simple:Array.isArray(r.simple)?r.simple.map(String):[]};
+  log("ai_response",{durationMs:rec.ms,model:S.usedModel,full:rec.resp.full,simple:rec.resp.simple});renderAnswer(box,r,rec)}
+ catch(e){rec.failed=true;rec.error=e.message||String(e);log("api_error",{message:rec.error});
+  box.innerHTML="<p>"+esc(explainApiError(rec.error))+'</p><p class="muted">Your question has been put back in the box so you can send it again.</p>';$("inp").value=prompt;$("sig").textContent="API error: "+rec.error}
+ finally{S.busy=false;$("send").disabled=false;$("send").textContent="Send";S.ep={start:now(),first:null};persist(true)}
+ if(S.mode==="B"&&score<=1&&!rec.failed){S.out=now()+CFG.outMs;decide()}}
+
+function renderAnswer(box, r, rec) {
+    let simple = S.level >= 2 && S.mode !== "A";
+    const pts = rec.resp.simple;
+
+    const draw = () => {
+        let html = (simple 
+            ? "<ul>" + pts.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" 
+            : "<p>" + esc(rec.resp.full || "I could not create an answer. Please try asking in a different way.") + "</p>")
+            + (S.mode !== "A" && pts.length ? '<button class="small toggle">' + (simple ? "Show full version" : "Show simpler version") + "</button>" : "");
+
+        if (S.mode === "A") {
+            html += '<div class="row rating"><button class="primary small finish-direct">Finish this task</button></div>';
+        } else {
+            html += '<div class="row rating"><span class="muted">Did this give you what you needed?</span></div>';
+        }
+
+        box.innerHTML = html;
+
+        const t = box.querySelector(".toggle");
+        if (t) {
+            t.addEventListener("click", () => {
+                simple = !simple;
+                log("answer_format_toggled", { simple });
+                if (simple && S.mode === "B") S.out = now() + CFG.outMs;
+                draw();
+            });
+        }
+
+        const directBtn = box.querySelector(".finish-direct");
+        if (directBtn) {
+            directBtn.addEventListener("click", () => endRound("done"));
+        }
+
+        const row = box.querySelector(".rating");
+        if (row && S.mode !== "A") {
+            [["yes", "Yes"], ["partly", "Partly"], ["no", "No"]].forEach(([v, l]) => addChip(row, l, () => rate(v, row, rec)));
+        }
+    };
+    draw();
+}
+
+function rate(v,row,rec){rec.rating=v;log("answer_rating",{value:v});row.innerHTML="";
+ if(v==="yes"){const b=mk("button","primary small","Finish this task");b.addEventListener("click",()=>endRound("done"));row.appendChild(b);
+  if(S.mode==="B"&&S.lastSub&&S.lastSub.qualityScore>=2&&S.lastSub.maxIndex<CFG.zAsk&&S.level>0){S.streak++;log("successful_prompt",{streak:S.streak});
+   if(S.streak>=CFG.k){changeLevel(S.level-1,"Your last questions went well",true,"fade");S.probe=true}}}
+ else{S.streak=0;if(S.mode==="B"){S.out=now()+CFG.outMs;decide()}row.textContent="You can ask again in your own words.";row.className="muted"}}
+
+// ============================ 11. QUESTIONNAIRES ============================
+function addSlider(c,id,text,lo,hi){const d=mk("div","question");d.innerHTML="<div>"+esc(text)+'</div><input type="range" min="0" max="100" value="50" id="'+id+'"><div class="muted">'+esc(lo)+" ← → "+esc(hi)+"</div>";c.appendChild(d)}
+function addLikert(c,id,text){const d=mk("div","question");d.innerHTML="<div>"+esc(text)+'</div><select id="'+id+'"><option value="">Choose</option>'+[1,2,3,4,5].map(n=>'<option value="'+n+'">'+n+"</option>").join("")+'</select><div class="muted">1 = strongly disagree, 5 = strongly agree</div>';c.appendChild(d)}
+function addChoice(c,id,text,opts){const d=mk("div","question");d.innerHTML="<div>"+esc(text)+'</div><select id="'+id+'"><option value="">Choose</option>'+opts.map(([v,l])=>'<option value="'+v+'">'+esc(l)+"</option>").join("")+"</select>";c.appendChild(d)}
+function showFeedback(){S.pos=S.cur.pos;showScreen("s-fb");const f=$("fbq");f.innerHTML="";
+ addLikert(f,"fb_helpful","The way this round worked was helpful.");addLikert(f,"fb_distracting","The way this round worked was distracting.");addLikert(f,"fb_confident","I felt confident writing my question in this round.");
+ if(S.mode!=="A")addLikert(f,"fb_understood","I understood why the help appeared or stayed the same.");
+ addSlider(f,"fb_mental","How much thinking did this round need?","Very little","A lot");addSlider(f,"fb_frustration","How frustrated or stressed did you feel?","Not at all","Very")}
+$("fbDone").addEventListener("click",()=>{const o={};for(const k of["helpful","distracting","confident","understood","mental","frustration"]){const el=$("fb_"+k);if(el){if(el.value===""){alert("Please answer every question.");return}o[k]=Number(el.value)}}
+ S.cur.fb=o;log("round_feedback",o);persist(true);nextRound()});
+function showFinal(){S.pos=6;S.label="final-questionnaire";S.cond="";S.task="";S.level=0;S.cur=null;showScreen("s-final");const f=$("fq");f.innerHTML="";
+ const opts=S.P.order.split("-").map((c,i)=>[c,"Round "+(i+2)+": "+DESC[c]]);
+ addChoice(f,"fq_useful","Which way of getting help did you find most useful?",opts);addChoice(f,"fq_pref","Which way of getting help did you prefer?",opts);
+ addLikert(f,"fq_improved","I feel I got better at writing questions during this session.");addLikert(f,"fq_confident","I feel more confident writing questions for an AI assistant now.");
+ addLikert(f,"fq_distracting","Overall, the guidance was distracting.");addLikert(f,"fq_helpful","Overall, the guidance was helpful.");
+ const c=mk("div","question");c.innerHTML='<label for="fq_comment">Anything else you would like to tell us?</label><textarea id="fq_comment"></textarea>';f.appendChild(c)}
+
+// SIMPLIFIED CALL: Submits session silently to backend instead of downloading local CSV
+$("fqDone").addEventListener("click", async () => {
+    const o = {};
+    for (const k of ["useful", "pref", "improved", "confident", "distracting", "helpful"]) {
+        const v = $("fq_" + k).value;
+        if (v === "") {
+            alert("Please answer every question.");
+            return;
+        }
+        o[k] = v;
+    }
+    o.comment = $("fq_comment").value;
+    S.P.final = o;
+    S.P.status = "completed";
+    S.P.completed = new Date().toISOString();
+    log("final_questionnaire", o);
+    persist(true);
+    showScreen("s-end");
+
+    try {
+        await fetch("/api/submit-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(S.P)
+        });
+    } catch (e) {
+        console.error("Failed to submit session data:", e);
+    }
+});
+
+// ============================ 12. RESEARCHER TOOLS ============================
+function renderAdmin(){const ps=allP();$("plist").innerHTML=ps.length?'<table class="pt"><tr><th>ID</th><th>Order</th><th>Status</th><th>Rounds</th></tr>'+ps.map(p=>"<tr><td>"+esc(p.pid)+"</td><td>"+p.order+"</td><td>"+p.status+"</td><td>"+p.rounds.filter(r=>r&&r.status!=="in_progress").length+"/5</td></tr>").join("")+"</table>":'<p class="muted">No participants stored yet.</p>'}
+function observerMark(){log("observer_struggle");$("sig").textContent="Observer mark saved at "+Math.round((Date.now()-(S.P?S.P.t0:Date.now()))/1000)+" s"}
+$("obs").addEventListener("click",observerMark);
+document.addEventListener("keydown",e=>{if(e.key==="F8"){e.preventDefault();observerMark()}
+ if(e.key==="F9"){e.preventDefault();const p=$("research-tools");p.hidden=!p.hidden;if(!p.hidden){renderAdmin();p.open=true}}});
+const pre=new URLSearchParams(location.search).get("pid");if(pre)$("pid").value=pre;
+</script></body></html>
