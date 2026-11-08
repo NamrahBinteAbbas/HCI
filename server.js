@@ -143,7 +143,8 @@ app.get("/api/researcher/download-all-data", (req, res) => {
 });
 
 // 5. Fallback Route: Serve index.html for any root requests
-app.get("*", (req, res) => {
+// TO THIS:
+app.get("/{*path}", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
