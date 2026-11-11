@@ -111,7 +111,10 @@ app.post("/api/submit-session", (req, res) => {
         const filePath = path.join(DATA_DIR, `${data.pid}_${Date.now()}.json`);
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 
-        console.log(`Saved results for participant: ${data.pid}`);
+        console.log("=== PARTICIPANT SESSION DATA START ===");
+        console.log(JSON.stringify(data));
+        console.log("=== PARTICIPANT SESSION DATA END ===");
+
         return res.json({ status: "success" });
     } catch (err) {
         console.error("Error saving participant session:", err);
@@ -119,33 +122,37 @@ app.post("/api/submit-session", (req, res) => {
     }
 });
 
-// 4. Researcher Secret Data Download Endpoint
-app.get("/api/researcher/download-all-data", (req, res) => {
-    const authKey = req.query.key;
-    // Replace with your secret passphrase
-    if (authKey !== "my_secret_admin_pass_123") {
-        return res.status(401).json({ error: "Unauthorized access." });
-    }
-
+// 4. Live Admin Dashboard API (Serves all participant responses)
+app.get("/api/admin/all-responses", (req, res) => {
     try {
+        if (!fs.existsSync(DATA_DIR)) {
+            return res.json([]);
+        }
         const files = fs.readdirSync(DATA_DIR);
-        const allSessions = files.map(file => {
-            const content = fs.readFileSync(path.join(DATA_DIR, file), "utf-8");
-            return JSON.parse(content);
-        });
+        const allSessions = files
+            .filter(f => f.endsWith(".json"))
+            .map(file => {
+                try {
+                    return JSON.parse(fs.readFileSync(path.join(DATA_DIR, file), "utf-8"));
+                } catch (e) {
+                    return null;
+                }
+            })
+            .filter(Boolean);
 
-        res.setHeader("Content-Type", "application/json");
-        res.setHeader("Content-Disposition", "attachment; filename=all_participants.json");
-        return res.send(JSON.stringify(allSessions, null, 2));
+        return res.json(allSessions);
     } catch (err) {
+        console.error("Error loading admin responses:", err);
         return res.status(500).json({ error: err.message });
     }
 });
 
-// 5. Fallback Route: Serve index.html for any root requests
-// TO THIS:
-app.get("/{*path}", (req, res) => {
-    res.sendFile(path.join(__dirname, "public", "index.html"));
+// 5. Fallback Middleware: Express v5 compatible static HTML route
+app.use((req, res, next) => {
+    if (req.method === "GET") {
+        return res.sendFile(path.join(__dirname, "public", "index.html"));
+    }
+    next();
 });
 
 app.listen(PORT, () => {

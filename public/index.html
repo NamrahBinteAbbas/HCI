@@ -2,8 +2,8 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ask Assistant</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)"><link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
+<link href="[https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap](https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap)" rel="stylesheet">
 <style>
 :root{color-scheme:light;--page:#f2f6f8;--surface:#fff;--ink:#172733;--muted:#5d6d78;--line:#d7e0e5;--brand:#12637a;--brand-dark:#0c4a5c;--brand-soft:#e8f3f6;--help:#fff8e7;--help-line:#e7bd58;--success:#23764e;--danger:#a52b25;--shadow:0 8px 28px rgba(23,39,51,.07);box-sizing:border-box}
 *,*::before,*::after{box-sizing:inherit}html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -87,17 +87,17 @@ textarea{min-height:112px;resize:vertical;line-height:1.5}.row{display:flex;flex
 
 <details id="research-tools" hidden><summary>Researcher tools (F9 to hide)</summary>
 <p class="muted" id="sig">No signals yet.</p><p class="error" id="store"></p>
-<div class="row"><button class="primary small" id="expAll">Export CSV (all participants)</button><button class="small" id="expJson">Backup JSON</button></div>
+<div class="row"><button class="primary small" id="expAll">Refresh & Export CSV</button><button class="small" id="expJson">Backup JSON</button></div>
 <div class="row"><button class="small" id="obs">Observer: struggle now (F8)</button><button class="small" id="skip">Skip round</button></div>
-<div class="row"><button class="small" id="testApi">Test AI connection</button><button class="small" id="listModels">List my models</button></div><p class="muted" id="testOut"></p>
+<p class="muted" id="testOut"></p>
 <div id="chk"></div><div id="plist"></div></details>
 </main>
 
 <script>
 "use strict";
 // ============================ 1. CONFIGURATION ============================
-const AI_MODEL = "gemini-3.6-flash";
-const AI_FALLBACK_MODEL = "gemini-2.5-flash";
+const AI_MODEL = "gemini-3.8-flash";
+const AI_FALLBACK_MODEL = "gemini-3.6-flash";
 const REASONING_EFFORT = "";
 const ENABLE_PROMPT_JUDGE=false;
 const MAX_API_ATTEMPTS=4,RETRY_DELAYS_MS=[1500,3000,6000];
@@ -129,7 +129,7 @@ function idxList(){try{return JSON.parse(localStorage.getItem(IDXK)||"[]")}catch
 function loadP(p){try{return JSON.parse(localStorage.getItem(PK+p))}catch(e){return null}}
 function allP(){return idxList().map(loadP).filter(Boolean)}
 function persist(imm){const P=S.P;if(!P)return;clearTimeout(st);
- const f=()=>{try{localStorage.setItem(PK+P.pid,JSON.stringify(P));const l=idxList();if(!l.includes(P.pid)){l.push(P.pid);localStorage.setItem(IDXK,JSON.stringify(l))}$("store").textContent=""}catch(e){$("store").textContent="WARNING: could not save in browser storage ("+e.message+")."}};
+ const f=()=>{try{localStorage.setItem(PK+P.pid,JSON.stringify(P));const l=idxList();if(!l.includes(P.pid)){l.push(P.pid);localStorage.setItem(IDXK,JSON.stringify(l))}$("store").textContent=""}catch(e){$("store").textContent="WARNING: could not save in browser storage."}};
  imm?f():st=setTimeout(f,1000)}
 function log(name,d){const P=S.P;if(!P)return;P.ev.push([Date.now(),name,S.pos,S.label,S.cond,S.task,S.level,d===undefined?null:d]);persist()}
 function showScreen(id){document.querySelectorAll(".screen").forEach(s=>s.hidden=s.id!==id)}
@@ -137,7 +137,7 @@ function mk(tag,cls,text){const e=document.createElement(tag);if(cls)e.className
 function addChip(parent,label,fn){const b=mk("button","chip small",label);b.type="button";b.addEventListener("click",fn);parent.appendChild(b)}
 function esc(v){const d=document.createElement("div");d.textContent=String(v==null?"":v);return d.innerHTML}
 
-// ============================ 3. AI API (Simplified Relative Path Calls) ============================
+// ============================ 3. AI API ============================
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
 async function callAI(prompt, system, onRetry = () => {}, model = AI_MODEL) {
@@ -153,7 +153,6 @@ for (let a = 1; a <= MAX_API_ATTEMPTS; a++) {
     let res, data;
 
     try {
-        // SIMPLIFIED CALL: Relative path to backend endpoint on the same server
         res = await fetch("/api/chat", {
             method: "POST",
             headers: {
@@ -415,7 +414,6 @@ function showFinal(){S.pos=6;S.label="final-questionnaire";S.cond="";S.task="";S
  addLikert(f,"fq_distracting","Overall, the guidance was distracting.");addLikert(f,"fq_helpful","Overall, the guidance was helpful.");
  const c=mk("div","question");c.innerHTML='<label for="fq_comment">Anything else you would like to tell us?</label><textarea id="fq_comment"></textarea>';f.appendChild(c)}
 
-// SIMPLIFIED CALL: Submits session silently to backend instead of downloading local CSV
 $("fqDone").addEventListener("click", async () => {
     const o = {};
     for (const k of ["useful", "pref", "improved", "confident", "distracting", "helpful"]) {
@@ -445,11 +443,103 @@ $("fqDone").addEventListener("click", async () => {
     }
 });
 
-// ============================ 12. RESEARCHER TOOLS ============================
-function renderAdmin(){const ps=allP();$("plist").innerHTML=ps.length?'<table class="pt"><tr><th>ID</th><th>Order</th><th>Status</th><th>Rounds</th></tr>'+ps.map(p=>"<tr><td>"+esc(p.pid)+"</td><td>"+p.order+"</td><td>"+p.status+"</td><td>"+p.rounds.filter(r=>r&&r.status!=="in_progress").length+"/5</td></tr>").join("")+"</table>":'<p class="muted">No participants stored yet.</p>'}
+// ============================ 12. EXPORT & ADMIN DASHBOARD ============================
+const cell=v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"';
+function dl(name,text,mime){const u=URL.createObjectURL(new Blob([text],{type:mime}));const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500)}
+function dlCSV(name,head,rows){dl(name,"\ufeff"+[head,...rows].map(r=>r.map(cell).join(",")).join("\r\n"),"text/csv;charset=utf-8")}
+const RH=["participant_id","experiment_date","experiment_start_time","condition_order","participant_status","round_position","round","condition_name","round_status","task_id","task_version","original_prompt","final_prompt","prompts_submitted","revisions_resubmissions","edit_backspaces","keystrokes","ai_response_final","ai_responses_all","ai_model_final","support_level_start","support_level_end","support_level_max","support_changes_manual","support_changes_system","support_undos","stuck_presses","help_offers_shown","help_offers_accepted","task_time_s","time_to_first_key_s","original_prompt_quality_0to3","final_prompt_quality_0to3","final_has_goal","final_has_context","final_has_format","self_rating_final","researcher_checklist_met","fb_helpful_1to5","fb_distracting_1to5","fb_confident_1to5","fb_understood_help_1to5","fb_mental_demand_0to100","fb_frustration_0to100"];
+function resultRows(P){return P.plan.map((pl,i)=>{const r=P.rounds[i]||null,vp=r?r.prompts.filter(x=>!x.failed):[],f=vp[0],l=vp[vp.length-1],fb=(r&&r.fb)||{};
+ return[P.pid,P.date.slice(0,10),P.date,P.order,P.status,pl.pos,pl.label,COND_NAME[pl.cond],r?r.status:"not_reached",pl.task,TASKS[pl.task].v,f?f.text:"",l?l.text:"",r?vp.length:"",vp.length?vp.length-1:"",r?r.bs:"",r?r.keys:"",l&&l.resp?l.resp.full:"",vp.map(x=>x.resp?x.resp.full:"").join(" || "),l&&l.model?l.model:"",r?r.levelStart:"",r?r.levelEnd:"",r?r.maxLevel:"",r?r.manual:"",r?r.system:"",r?r.undo:"",r?r.stuck:"",r?r.offers:"",r?r.offersYes:"",r&&r.durMs!=null?(r.durMs/1000).toFixed(1):"",r&&r.firstKeyMs!=null?(r.firstKeyMs/1000).toFixed(1):"",f?f.q:"",l?l.q:"",l?+l.qs.goal:"",l?+l.qs.context:"",l?+l.qs.format:"",l?l.rating:"",r?r.check.filter(Boolean).length+"/3":"",fb.helpful,fb.distracting,fb.confident,fb.understood,fb.mental,fb.frustration]})}
+const LH=["participant_id","timestamp_iso","elapsed_ms","event_type","round_position","round","condition","task_id","support_level","details_json"];
+function logRows(P){return P.ev.map(e=>[P.pid,new Date(e[0]).toISOString(),e[0]-P.t0,e[1],e[2],e[3],e[4],e[5],e[6],JSON.stringify(e[7])])}
+const RK=[["PRE","pre"],["A","A"],["B","B"],["C","C"],["POST","post"]],RF=["position","task","status","final_quality","revisions","time_s","support_end","checklist_met","fb_helpful","fb_distracting","fb_confident"];
+const SH=["participant_id","experiment_date","condition_order","participant_status","rounds_finished","baseline_avg_key_gap_ms","baseline_gap_sd_ms","baseline_pause_threshold_ms","baseline_pause_fraction","baseline_burst_mean","baseline_delete_rate",...RK.flatMap(([,k])=>RF.map(f=>k+"_"+f)),"prepost_quality_change","final_most_useful","final_preferred","final_improved","final_more_confident","final_distracting","final_helpful","final_comment"];
+function summaryRow(P){const b=P.baseline||{},fin=P.final||{};let pre,post;
+ const parts=RK.flatMap(([c,k])=>{const i=P.plan.findIndex(p=>p.cond===c),pl=P.plan[i],r=P.rounds[i],vp=r?r.prompts.filter(x=>!x.failed):[],l=vp[vp.length-1],fb=(r&&r.fb)||{};
+  if(c==="PRE")pre=l?l.q:null;if(c==="POST")post=l?l.q:null;
+  return[pl.pos,pl.task,r?r.status:"not_reached",l?l.q:"",vp.length?vp.length-1:"",r&&r.durMs!=null?(r.durMs/1000).toFixed(1):"",r?r.levelEnd:"",r?r.check.filter(Boolean).length+"/3":"",fb.helpful,fb.distracting,fb.confident]});
+ return[P.pid,P.date.slice(0,10),P.order,P.status,P.rounds.filter(r=>r&&r.status!=="in_progress").length,b.avgGapMs,b.gapSdMs,b.pauseThresholdMs,b.pauseFractionMean,b.burstMean,b.deleteRateMean,...parts,pre!=null&&post!=null?post-pre:"",fin.useful,fin.pref,fin.improved,fin.confident,fin.distracting,fin.helpful,fin.comment]}
+
+async function loadAdminDashboard() {
+    const listContainer = $("plist");
+    if (!listContainer) return;
+
+    listContainer.innerHTML = "<p class='muted'>Loading live server participant responses...</p>";
+
+    try {
+        const res = await fetch("/api/admin/all-responses");
+        if (!res.ok) throw new Error("Failed to load server data");
+        let sessions = await res.json();
+
+        // Fallback to local sessions if server data directory is empty
+        if (!sessions || sessions.length === 0) {
+            sessions = allP();
+        }
+
+        if (!sessions || sessions.length === 0) {
+            listContainer.innerHTML = "<p class='muted'>No participant responses recorded yet.</p>";
+            return;
+        }
+
+        let html = `
+            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <strong>Total Responses Loaded: ${sessions.length}</strong>
+                <button class="primary small" id="downloadServerCsv">📥 Download Excel CSV (All Participants)</button>
+            </div>
+            <div style="max-height: 400px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px;">
+            <table class="pt" style="width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr style="background: var(--brand-soft); text-align: left;">
+                        <th style="padding: 8px;">PID</th>
+                        <th style="padding: 8px;">Date</th>
+                        <th style="padding: 8px;">Order</th>
+                        <th style="padding: 8px;">Status</th>
+                        <th style="padding: 8px;">Prompts Sent</th>
+                        <th style="padding: 8px;">Helpful (1-5)</th>
+                        <th style="padding: 8px;">Confident (1-5)</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        sessions.forEach(p => {
+            const finalFb = p.final || {};
+            const totalPrompts = p.rounds ? p.rounds.reduce((acc, r) => acc + (r.prompts ? r.prompts.length : 0), 0) : 0;
+            const dateStr = p.date ? new Date(p.date).toLocaleDateString() : "N/A";
+
+            html += `
+                <tr style="border-bottom: 1px solid var(--line);">
+                    <td style="padding: 8px;"><strong>${esc(p.pid)}</strong></td>
+                    <td style="padding: 8px;">${dateStr}</td>
+                    <td style="padding: 8px;">${esc(p.order || "N/A")}</td>
+                    <td style="padding: 8px;"><span style="color: ${p.status === 'completed' ? 'var(--success)' : 'var(--danger)'}">${esc(p.status)}</span></td>
+                    <td style="padding: 8px;">${totalPrompts}</td>
+                    <td style="padding: 8px;">${finalFb.helpful || "-"}</td>
+                    <td style="padding: 8px;">${finalFb.confident || "-"}</td>
+                </tr>
+            `;
+        });
+
+        html += `</tbody></table></div>`;
+        listContainer.innerHTML = html;
+
+        $("downloadServerCsv").addEventListener("click", () => {
+            dlCSV("all_participant_results_" + Date.now() + ".csv", RH, sessions.flatMap(resultRows));
+            setTimeout(() => dlCSV("all_interaction_logs_" + Date.now() + ".csv", LH, sessions.flatMap(logRows)), 400);
+            setTimeout(() => dlCSV("all_participant_summary_" + Date.now() + ".csv", SH, sessions.map(summaryRow)), 800);
+        });
+
+    } catch (err) {
+        listContainer.innerHTML = `<p class="error">Error loading responses: ${esc(err.message)}</p>`;
+    }
+}
+
+$("expAll").addEventListener("click", loadAdminDashboard);
+$("expJson").addEventListener("click",()=>{persist(true);dl("backup_all_participants_"+Date.now()+".json",JSON.stringify(allP()),"application/json")});
+
 function observerMark(){log("observer_struggle");$("sig").textContent="Observer mark saved at "+Math.round((Date.now()-(S.P?S.P.t0:Date.now()))/1000)+" s"}
 $("obs").addEventListener("click",observerMark);
 document.addEventListener("keydown",e=>{if(e.key==="F8"){e.preventDefault();observerMark()}
- if(e.key==="F9"){e.preventDefault();const p=$("research-tools");p.hidden=!p.hidden;if(!p.hidden){renderAdmin();p.open=true}}});
+ if(e.key==="F9"){e.preventDefault();const p=$("research-tools");p.hidden=!p.hidden;if(!p.hidden){loadAdminDashboard();p.open=true}}});
 const pre=new URLSearchParams(location.search).get("pid");if(pre)$("pid").value=pre;
 </script></body></html>
