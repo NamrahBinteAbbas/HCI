@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const { GoogleGenAI } = require("@google/genai");
+const { google } = require("googleapis");
 const path = require("path");
 const fs = require("fs");
 
@@ -14,22 +15,112 @@ if (!process.env.GEMINI_API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Ensure participant data directory exists
+// Your Google Spreadsheet ID
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID || "1-9y_9hUutt0mQ9CwGyHDDPmBhjNp8Jc6-NU9T9MpElc";
+
+// Initialize Google Sheets Auth (Supports Render Env Variable OR local file)
+let sheetsApi = null;
+try {
+    let auth;
+    if (process.env.GOOGLE_CREDENTIALS_JSON) {
+        const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+        auth = new google.auth.GoogleAuth({
+            credentials,
+            scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+        });
+    } else if (fs.existsSync(path.join(__dirname, "google-credentials.json"))) {
+        auth = new google.auth.GoogleAuth({
+            keyFile: path.join(__dirname, "google-credentials.json"),
+            scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+        });
+    }
+
+    if (auth) {
+        sheetsApi = google.sheets({ version: "v4", auth });
+        console.log("Google Sheets API initialized successfully.");
+    } else {
+        console.warn("WARNING: No Google credentials found. Sheets logging is disabled.");
+    }
+} catch (err) {
+    console.error("Failed to initialize Google Sheets API:", err.message);
+}
+
 const DATA_DIR = path.join(__dirname, "participant_data");
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR);
 }
 
-app.use(express.json({ limit: "1mb" }));
-
-// 1. Serve static files (HTML, CSS, client JS) from the "public" folder
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const PRIMARY_MODEL = "gemini-3.8-flash";
 const FALLBACK_MODEL = "gemini-3.6-flash";
 const EMERGENCY_MODEL = "gemini-3.5-flash-lite";
 
-// 2. Chat API Endpoint
+// Helper: Ensure Sheet tabs and headers exist before writing
+async function ensureSheetHeaders() {
+    if (!sheetsApi) return;
+    const meta = await sheetsApi.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    const existingSheets = meta.data.sheets.map(s => s.properties.title);
+
+    const requests = [];
+    if (!existingSheets.includes("Summary")) {
+        requests.push({ addSheet: { properties: { title: "Summary" } } });
+    }
+    if (!existingSheets.includes("Rounds")) {
+        requests.push({ addSheet: { properties: { title: "Rounds" } } });
+    }
+    if (requests.length > 0) {
+        await sheetsApi.spreadsheets.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            resource: { requests }
+        });
+    }
+
+    // Check Summary header
+    const sumCheck = await sheetsApi.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: "Summary!A1:A1"
+    });
+    if (!sumCheck.data.values || sumCheck.data.values.length === 0) {
+        await sheetsApi.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: "Summary!A1",
+            valueInputOption: "USER_ENTERED",
+            resource: {
+                values: [[
+                    "Participant ID", "Date", "Condition Order", "Status", "Rounds Finished",
+                    "Baseline Gap (ms)", "Pause Threshold (ms)", "Total Prompts",
+                    "Most Useful", "Preferred", "Improved (1-5)", "More Confident (1-5)",
+                    "Distracting (1-5)", "Helpful (1-5)", "Final Comment", "Raw_JSON"
+                ]]
+            }
+        });
+    }
+
+    // Check Rounds header
+    const rndCheck = await sheetsApi.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: "Rounds!A1:A1"
+    });
+    if (!rndCheck.data.values || rndCheck.data.values.length === 0) {
+        await sheetsApi.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: "Rounds!A1",
+            valueInputOption: "USER_ENTERED",
+            resource: {
+                values: [[
+                    "Participant ID", "Round Pos", "Round Label", "Condition", "Task ID",
+                    "Status", "Original Prompt", "Final Prompt", "Prompts Count",
+                    "Keystrokes", "Backspaces", "Duration (s)", "Start Support", "End Support",
+                    "FB Helpful", "FB Distracting", "FB Confident", "FB Understood", "FB Mental", "FB Frustration"
+                ]]
+            }
+        });
+    }
+}
+
+// 1. Chat API Endpoint
 app.post("/api/chat", async (req, res) => {
     req.setTimeout(30000, () => {
         if (!res.headersSent) {
@@ -62,7 +153,7 @@ app.post("/api/chat", async (req, res) => {
                             responseMimeType: "application/json"
                         }
                     }),
-                    new Promise((_, reject) => 
+                    new Promise((_, reject) =>
                         setTimeout(() => reject(new Error("Timeout after 15s")), 15000)
                     )
                 ]);
@@ -100,34 +191,119 @@ app.post("/api/chat", async (req, res) => {
     }
 });
 
-// 3. Submit Completed Session Endpoint
-app.post("/api/submit-session", (req, res) => {
+// 2. Submit Completed Session & Write to Google Sheets
+app.post("/api/submit-session", async (req, res) => {
     try {
         const data = req.body;
         if (!data || !data.pid) {
             return res.status(400).json({ error: "Invalid data format." });
         }
 
+        // Save local disk copy
         const filePath = path.join(DATA_DIR, `${data.pid}_${Date.now()}.json`);
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 
+        // Print log backup
         console.log("=== PARTICIPANT SESSION DATA START ===");
         console.log(JSON.stringify(data));
         console.log("=== PARTICIPANT SESSION DATA END ===");
 
-        return res.json({ status: "success" });
+        // Write to Google Sheets
+        if (sheetsApi) {
+            await ensureSheetHeaders();
+            const fin = data.final || {};
+            const base = data.baseline || {};
+            const totalPrompts = (data.rounds || []).reduce((acc, r) => acc + (r && r.prompts ? r.prompts.length : 0), 0);
+            const finishedRounds = (data.rounds || []).filter(r => r && r.status !== "in_progress").length;
+
+            // 1. Append to Summary tab (Note: store compact JSON without raw keystrokes in cell to stay under 50k char limit)
+            const compactCopy = { ...data, ev: [] };
+            const summaryRow = [
+                data.pid,
+                data.date || new Date().toISOString(),
+                data.order || "",
+                data.status || "completed",
+                finishedRounds,
+                base.avgGapMs || "",
+                base.pauseThresholdMs || "",
+                totalPrompts,
+                fin.useful || "",
+                fin.pref || "",
+                fin.improved || "",
+                fin.confident || "",
+                fin.distracting || "",
+                fin.helpful || "",
+                fin.comment || "",
+                JSON.stringify(compactCopy).slice(0, 49000)
+            ];
+
+            await sheetsApi.spreadsheets.values.append({
+                spreadsheetId: SPREADSHEET_ID,
+                range: "Summary!A:P",
+                valueInputOption: "USER_ENTERED",
+                resource: { values: [summaryRow] }
+            });
+
+            // 2. Append each round to Rounds tab
+            const roundRows = (data.plan || []).map((pl, i) => {
+                const r = (data.rounds || [])[i] || {};
+                const vp = (r.prompts || []).filter(x => !x.failed);
+                const firstP = vp[0] ? vp[0].text : "";
+                const lastP = vp[vp.length - 1] ? vp[vp.length - 1].text : "";
+                const fb = r.fb || {};
+                return [
+                    data.pid, pl.pos, pl.label, pl.cond, pl.task,
+                    r.status || "not_reached", firstP, lastP, vp.length,
+                    r.keys || 0, r.bs || 0, r.durMs != null ? (r.durMs / 1000).toFixed(1) : "",
+                    r.levelStart ?? "", r.levelEnd ?? "",
+                    fb.helpful || "", fb.distracting || "", fb.confident || "",
+                    fb.understood || "", fb.mental ?? "", fb.frustration ?? ""
+                ];
+            });
+
+            if (roundRows.length > 0) {
+                await sheetsApi.spreadsheets.values.append({
+                    spreadsheetId: SPREADSHEET_ID,
+                    range: "Rounds!A:T",
+                    valueInputOption: "USER_ENTERED",
+                    resource: { values: roundRows }
+                });
+            }
+
+            console.log(`Saved participant ${data.pid} to Google Sheets.`);
+        }
+
+        return res.json({ status: "success", sheetsSaved: !!sheetsApi });
     } catch (err) {
         console.error("Error saving participant session:", err);
-        return res.status(500).json({ error: "Failed to save data." });
+        return res.status(500).json({ error: "Failed to save data: " + err.message });
     }
 });
 
-// 4. Live Admin Dashboard API (Serves all participant responses)
-app.get("/api/admin/all-responses", (req, res) => {
+// 3. Live Admin Dashboard API (Reads from Google Sheets so data persists across Render restarts)
+app.get("/api/admin/all-responses", async (req, res) => {
     try {
-        if (!fs.existsSync(DATA_DIR)) {
-            return res.json([]);
+        if (sheetsApi) {
+            const response = await sheetsApi.spreadsheets.values.get({
+                spreadsheetId: SPREADSHEET_ID,
+                range: "Summary!P2:P"
+            });
+            const rows = response.data.values || [];
+            const sessions = rows.map(row => {
+                try {
+                    return row[0] ? JSON.parse(row[0]) : null;
+                } catch (e) {
+                    return null;
+                }
+            }).filter(Boolean);
+
+            if (sessions.length > 0) {
+                return res.json(sessions);
+            }
         }
+
+        // Fallback to local files if Sheets is empty or unconfigured
+        if (!fs.existsSync(DATA_DIR)) return res.json([]);
         const files = fs.readdirSync(DATA_DIR);
         const allSessions = files
             .filter(f => f.endsWith(".json"))
@@ -147,7 +323,7 @@ app.get("/api/admin/all-responses", (req, res) => {
     }
 });
 
-// 5. Fallback Middleware: Express v5 compatible static HTML route
+// 4. Fallback Middleware
 app.use((req, res, next) => {
     if (req.method === "GET") {
         return res.sendFile(path.join(__dirname, "public", "index.html"));

@@ -37,8 +37,8 @@ textarea{min-height:112px;resize:vertical;line-height:1.5}.row{display:flex;flex
 .toast{position:fixed;z-index:30;right:12px;bottom:18px;left:12px;display:none;align-items:center;flex-wrap:wrap;gap:10px;width:min(680px,calc(100% - 24px));margin:auto;padding:12px 14px;border-radius:14px;color:#fff;background:var(--ink);box-shadow:0 10px 30px rgba(20,34,46,.25)}
 .toast.show{display:flex}.toast span{flex:1}.toast button{min-height:38px;border-color:#fff;color:#fff;background:transparent}
 .question{margin:14px 0;padding-bottom:13px;border-bottom:1px solid var(--line)}.question input[type=range]{width:100%;height:32px;accent-color:var(--brand)}.question select{width:auto;min-width:130px;max-width:100%}
-#research-tools{position:fixed;z-index:20;right:12px;bottom:12px;width:min(430px,calc(100vw - 24px));max-height:70vh;overflow:auto;padding:5px 12px;border:1px solid var(--line);border-radius:13px;background:#fff;box-shadow:0 10px 34px rgba(20,34,46,.22);font-size:.85rem}
-#research-tools summary{display:flex;min-height:32px;align-items:center;cursor:pointer;font-weight:700}.pt{width:100%;border-collapse:collapse;margin:6px 0}.pt td,.pt th{padding:3px 6px;border-bottom:1px solid var(--line);text-align:left}
+#research-tools{position:fixed;z-index:20;right:12px;bottom:12px;width:min(460px,calc(100vw - 24px));max-height:75vh;overflow:auto;padding:8px 14px;border:1px solid var(--line);border-radius:13px;background:#fff;box-shadow:0 10px 34px rgba(20,34,46,.22);font-size:.85rem}
+#research-tools summary{display:flex;min-height:32px;align-items:center;cursor:pointer;font-weight:700}.pt{width:100%;border-collapse:collapse;margin:6px 0}.pt td,.pt th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}
 @keyframes appear{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 @media(max-width:560px){body{font-size:18px}.wrap{width:min(100% - 24px,740px);padding-top:18px}.controls{width:100%;margin-left:0}.controls button{flex:1}.message{max-width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
@@ -83,14 +83,13 @@ textarea{min-height:112px;resize:vertical;line-height:1.5}.row{display:flex;flex
 
 <section id="s-fb" class="screen" hidden><h1>About that round</h1><div id="fbq"></div><button class="primary" id="fbDone">Next</button></section>
 <section id="s-final" class="screen" hidden><h1>Final questions</h1><div id="fq"></div><button class="primary" id="fqDone">Finish</button></section>
-<section id="s-end" class="screen" hidden><div class="panel welcome"><h1>Thank you!</h1><p class="lead">You are all done. Your answers have been saved.</p></div></section>
+<section id="s-end" class="screen" hidden><div class="panel welcome"><h1>Thank you!</h1><p class="lead" id="endMsg">You are all done. Your answers have been saved.</p></div></section>
 
 <details id="research-tools" hidden><summary>Researcher tools (F9 to hide)</summary>
 <p class="muted" id="sig">No signals yet.</p><p class="error" id="store"></p>
-<div class="row"><button class="primary small" id="expAll">Refresh & Export CSV</button><button class="small" id="expJson">Backup JSON</button></div>
+<div class="row"><button class="primary small" id="expAll">Refresh Data</button><button class="small" id="expJson">Backup Local JSON</button></div>
 <div class="row"><button class="small" id="obs">Observer: struggle now (F8)</button><button class="small" id="skip">Skip round</button></div>
-<p class="muted" id="testOut"></p>
-<div id="chk"></div><div id="plist"></div></details>
+<div id="chk"></div><div id="plist" style="margin-top:10px;"></div></details>
 </main>
 
 <script>
@@ -141,67 +140,46 @@ function esc(v){const d=document.createElement("div");d.textContent=String(v==nu
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
 async function callAI(prompt, system, onRetry = () => {}, model = AI_MODEL) {
-const body = {
-    model,
-    messages: [
-        { role: "system", content: system },
-        { role: "user", content: prompt }
-    ]
-};
+    const body = {
+        model,
+        messages: [
+            { role: "system", content: system },
+            { role: "user", content: prompt }
+        ]
+    };
 
-for (let a = 1; a <= MAX_API_ATTEMPTS; a++) {
-    let res, data;
-
-    try {
-        res = await fetch("/api/chat", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(body)
-        });
-
-        data = await res.json().catch(() => ({}));
-
-    } catch (e) {
-        if (a === MAX_API_ATTEMPTS) {
-            throw new Error("Backend connection failed: " + e.message);
+    for (let a = 1; a <= MAX_API_ATTEMPTS; a++) {
+        let res, data;
+        try {
+            res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body)
+            });
+            data = await res.json().catch(() => ({}));
+        } catch (e) {
+            if (a === MAX_API_ATTEMPTS) throw new Error("Backend connection failed: " + e.message);
+            const d = RETRY_DELAYS_MS[a - 1] ?? 6000;
+            onRetry(a + 1, d, "Backend connection failed");
+            await wait(d);
+            continue;
         }
 
-        const d = RETRY_DELAYS_MS[a - 1] ?? 6000;
-        onRetry(a + 1, d, "Backend connection failed");
-        await wait(d);
-        continue;
-    }
-
-    if (!res.ok) {
-        const m = "HTTP " + res.status + ": " + (data?.error || "Unknown API error");
-        const quota = res.status === 429 && /quota|billing/i.test(m);
-
-        if (quota || ![429, 500, 502, 503, 504].includes(res.status) || a === MAX_API_ATTEMPTS) {
-            throw new Error(m);
+        if (!res.ok) {
+            const m = "HTTP " + res.status + ": " + (data?.error || "Unknown API error");
+            const quota = res.status === 429 && /quota|billing/i.test(m);
+            if (quota || ![429, 500, 502, 503, 504].includes(res.status) || a === MAX_API_ATTEMPTS) throw new Error(m);
+            const d = RETRY_DELAYS_MS[a - 1] ?? 6000;
+            onRetry(a + 1, d, m);
+            await wait(d);
+            continue;
         }
 
-        const d = RETRY_DELAYS_MS[a - 1] ?? 6000;
-        onRetry(a + 1, d, m);
-        await wait(d);
-        continue;
+        const text = data?.choices?.[0]?.message?.content?.trim();
+        if (!text) throw new Error("The assistant returned an empty response.");
+        try { return JSON.parse(text); } catch { throw new Error("The assistant returned invalid JSON."); }
     }
-
-    const text = data?.choices?.[0]?.message?.content?.trim();
-
-    if (!text) {
-        throw new Error("The assistant returned an empty response.");
-    }
-
-    try {
-        return JSON.parse(text);
-    } catch {
-        throw new Error("The assistant returned invalid JSON.");
-    }
-}
-
-throw new Error("The assistant could not complete the request.");
+    throw new Error("The assistant could not complete the request.");
 }
 
 async function callWithFallback(prompt,system,onRetry=()=>{}){
@@ -430,16 +408,24 @@ $("fqDone").addEventListener("click", async () => {
     S.P.completed = new Date().toISOString();
     log("final_questionnaire", o);
     persist(true);
-    showScreen("s-end");
+
+    const btn = $("fqDone");
+    btn.disabled = true;
+    btn.textContent = "Saving your answers...";
 
     try {
-        await fetch("/api/submit-session", {
+        const res = await fetch("/api/submit-session", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(S.P)
         });
+        if (!res.ok) throw new Error("Server save failed");
+        $("endMsg").textContent = "You are all done. Your answers have been saved to the research database.";
     } catch (e) {
         console.error("Failed to submit session data:", e);
+        $("endMsg").textContent = "You are all done. Your answers were saved locally on this device.";
+    } finally {
+        showScreen("s-end");
     }
 });
 
@@ -451,7 +437,7 @@ const RH=["participant_id","experiment_date","experiment_start_time","condition_
 function resultRows(P){return P.plan.map((pl,i)=>{const r=P.rounds[i]||null,vp=r?r.prompts.filter(x=>!x.failed):[],f=vp[0],l=vp[vp.length-1],fb=(r&&r.fb)||{};
  return[P.pid,P.date.slice(0,10),P.date,P.order,P.status,pl.pos,pl.label,COND_NAME[pl.cond],r?r.status:"not_reached",pl.task,TASKS[pl.task].v,f?f.text:"",l?l.text:"",r?vp.length:"",vp.length?vp.length-1:"",r?r.bs:"",r?r.keys:"",l&&l.resp?l.resp.full:"",vp.map(x=>x.resp?x.resp.full:"").join(" || "),l&&l.model?l.model:"",r?r.levelStart:"",r?r.levelEnd:"",r?r.maxLevel:"",r?r.manual:"",r?r.system:"",r?r.undo:"",r?r.stuck:"",r?r.offers:"",r?r.offersYes:"",r&&r.durMs!=null?(r.durMs/1000).toFixed(1):"",r&&r.firstKeyMs!=null?(r.firstKeyMs/1000).toFixed(1):"",f?f.q:"",l?l.q:"",l?+l.qs.goal:"",l?+l.qs.context:"",l?+l.qs.format:"",l?l.rating:"",r?r.check.filter(Boolean).length+"/3":"",fb.helpful,fb.distracting,fb.confident,fb.understood,fb.mental,fb.frustration]})}
 const LH=["participant_id","timestamp_iso","elapsed_ms","event_type","round_position","round","condition","task_id","support_level","details_json"];
-function logRows(P){return P.ev.map(e=>[P.pid,new Date(e[0]).toISOString(),e[0]-P.t0,e[1],e[2],e[3],e[4],e[5],e[6],JSON.stringify(e[7])])}
+function logRows(P){return (P.ev||[]).map(e=>[P.pid,new Date(e[0]).toISOString(),e[0]-P.t0,e[1],e[2],e[3],e[4],e[5],e[6],JSON.stringify(e[7])])}
 const RK=[["PRE","pre"],["A","A"],["B","B"],["C","C"],["POST","post"]],RF=["position","task","status","final_quality","revisions","time_s","support_end","checklist_met","fb_helpful","fb_distracting","fb_confident"];
 const SH=["participant_id","experiment_date","condition_order","participant_status","rounds_finished","baseline_avg_key_gap_ms","baseline_gap_sd_ms","baseline_pause_threshold_ms","baseline_pause_fraction","baseline_burst_mean","baseline_delete_rate",...RK.flatMap(([,k])=>RF.map(f=>k+"_"+f)),"prepost_quality_change","final_most_useful","final_preferred","final_improved","final_more_confident","final_distracting","final_helpful","final_comment"];
 function summaryRow(P){const b=P.baseline||{},fin=P.final||{};let pre,post;
@@ -463,15 +449,13 @@ function summaryRow(P){const b=P.baseline||{},fin=P.final||{};let pre,post;
 async function loadAdminDashboard() {
     const listContainer = $("plist");
     if (!listContainer) return;
-
-    listContainer.innerHTML = "<p class='muted'>Loading live server participant responses...</p>";
+    listContainer.innerHTML = "<p class='muted'>Loading responses from Google Sheets / Server...</p>";
 
     try {
         const res = await fetch("/api/admin/all-responses");
         if (!res.ok) throw new Error("Failed to load server data");
         let sessions = await res.json();
 
-        // Fallback to local sessions if server data directory is empty
         if (!sessions || sessions.length === 0) {
             sessions = allP();
         }
@@ -482,40 +466,34 @@ async function loadAdminDashboard() {
         }
 
         let html = `
-            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                <strong>Total Responses Loaded: ${sessions.length}</strong>
-                <button class="primary small" id="downloadServerCsv">📥 Download Excel CSV (All Participants)</button>
+            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <strong>Total Participants: ${sessions.length}</strong>
+                <button class="primary small" id="downloadServerCsv">Download Excel CSVs</button>
             </div>
-            <div style="max-height: 400px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px;">
-            <table class="pt" style="width:100%; border-collapse:collapse;">
+            <div style="max-height: 350px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px;">
+            <table class="pt">
                 <thead>
-                    <tr style="background: var(--brand-soft); text-align: left;">
-                        <th style="padding: 8px;">PID</th>
-                        <th style="padding: 8px;">Date</th>
-                        <th style="padding: 8px;">Order</th>
-                        <th style="padding: 8px;">Status</th>
-                        <th style="padding: 8px;">Prompts Sent</th>
-                        <th style="padding: 8px;">Helpful (1-5)</th>
-                        <th style="padding: 8px;">Confident (1-5)</th>
+                    <tr style="background: var(--brand-soft);">
+                        <th>PID</th>
+                        <th>Date</th>
+                        <th>Order</th>
+                        <th>Status</th>
+                        <th>Prompts</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
         sessions.forEach(p => {
-            const finalFb = p.final || {};
-            const totalPrompts = p.rounds ? p.rounds.reduce((acc, r) => acc + (r.prompts ? r.prompts.length : 0), 0) : 0;
+            const totalPrompts = p.rounds ? p.rounds.reduce((acc, r) => acc + (r && r.prompts ? r.prompts.length : 0), 0) : 0;
             const dateStr = p.date ? new Date(p.date).toLocaleDateString() : "N/A";
-
             html += `
-                <tr style="border-bottom: 1px solid var(--line);">
-                    <td style="padding: 8px;"><strong>${esc(p.pid)}</strong></td>
-                    <td style="padding: 8px;">${dateStr}</td>
-                    <td style="padding: 8px;">${esc(p.order || "N/A")}</td>
-                    <td style="padding: 8px;"><span style="color: ${p.status === 'completed' ? 'var(--success)' : 'var(--danger)'}">${esc(p.status)}</span></td>
-                    <td style="padding: 8px;">${totalPrompts}</td>
-                    <td style="padding: 8px;">${finalFb.helpful || "-"}</td>
-                    <td style="padding: 8px;">${finalFb.confident || "-"}</td>
+                <tr>
+                    <td><strong>${esc(p.pid)}</strong></td>
+                    <td>${dateStr}</td>
+                    <td>${esc(p.order || "N/A")}</td>
+                    <td>${esc(p.status)}</td>
+                    <td>${totalPrompts}</td>
                 </tr>
             `;
         });
@@ -525,8 +503,7 @@ async function loadAdminDashboard() {
 
         $("downloadServerCsv").addEventListener("click", () => {
             dlCSV("all_participant_results_" + Date.now() + ".csv", RH, sessions.flatMap(resultRows));
-            setTimeout(() => dlCSV("all_interaction_logs_" + Date.now() + ".csv", LH, sessions.flatMap(logRows)), 400);
-            setTimeout(() => dlCSV("all_participant_summary_" + Date.now() + ".csv", SH, sessions.map(summaryRow)), 800);
+            setTimeout(() => dlCSV("all_participant_summary_" + Date.now() + ".csv", SH, sessions.map(summaryRow)), 400);
         });
 
     } catch (err) {
@@ -535,7 +512,7 @@ async function loadAdminDashboard() {
 }
 
 $("expAll").addEventListener("click", loadAdminDashboard);
-$("expJson").addEventListener("click",()=>{persist(true);dl("backup_all_participants_"+Date.now()+".json",JSON.stringify(allP()),"application/json")});
+$("expJson").addEventListener("click",()=>{persist(true);dl("backup_local_participants_"+Date.now()+".json",JSON.stringify(allP()),"application/json")});
 
 function observerMark(){log("observer_struggle");$("sig").textContent="Observer mark saved at "+Math.round((Date.now()-(S.P?S.P.t0:Date.now()))/1000)+" s"}
 $("obs").addEventListener("click",observerMark);
