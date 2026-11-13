@@ -53,10 +53,9 @@ if (!fs.existsSync(DATA_DIR)) {
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-const MODELS_TO_TRY = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
+const MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
 
 async function generateSafe(modelName, systemMessage, userMessage) {
-    // Try official @google/genai SDK first
     try {
         const result = await ai.models.generateContent({
             model: modelName,
@@ -68,7 +67,6 @@ async function generateSafe(modelName, systemMessage, userMessage) {
         console.warn(`SDK call failed for ${modelName}, trying direct REST:`, sdkErr.message);
     }
 
-    // Direct REST fallback (works regardless of @google/genai version on Render)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
     const payload = {
         contents: [{ role: "user", parts: [{ text: userMessage }] }]
@@ -218,7 +216,6 @@ app.post("/api/chat", async (req, res) => {
             return res.status(500).json({ error: lastError ? lastError.message : "All Gemini models failed." });
         }
 
-        // Extract JSON object even if Gemini wraps it in markdown or extra text
         let cleanedText = responseText.trim()
             .replace(/^```json\s*/i, "")
             .replace(/^```\s*/, "")
