@@ -53,9 +53,9 @@ if (!fs.existsSync(DATA_DIR)) {
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-const PRIMARY_MODEL = "gemini-3.8-flash";
-const FALLBACK_MODEL = "gemini-3.6-flash";
-const EMERGENCY_MODEL = "gemini-3.5-flash-lite";
+const PRIMARY_MODEL = "gemini-2.5-flash";
+const FALLBACK_MODEL = "gemini-2.5-flash-lite";
+const EMERGENCY_MODEL = "gemini-2.5-flash-lite";
 
 async function ensureSheetHeaders() {
     if (!sheetsApi) throw new Error(sheetsInitError || "Sheets API not initialized.");
@@ -141,7 +141,7 @@ app.get("/api/test-sheets", async (req, res) => {
 
 // 2. Chat API Endpoint
 app.post("/api/chat", async (req, res) => {
-    req.setTimeout(30000, () => {
+    req.setTimeout(60000, () => {
         if (!res.headersSent) {
             return res.status(504).json({ error: "Request timed out. Please try sending again." });
         }
@@ -158,7 +158,7 @@ app.post("/api/chat", async (req, res) => {
 
         let responseText = null;
         let usedModel = PRIMARY_MODEL;
-        const modelsToTry = [PRIMARY_MODEL, FALLBACK_MODEL, EMERGENCY_MODEL];
+        const modelsToTry = [PRIMARY_MODEL, FALLBACK_MODEL];
 
         for (const modelName of modelsToTry) {
             try {
@@ -169,11 +169,12 @@ app.post("/api/chat", async (req, res) => {
                         contents: userMessage,
                         config: {
                             systemInstruction: systemMessage,
-                            responseMimeType: "application/json"
+                            responseMimeType: "application/json",
+                            thinkingConfig: { thinkingBudget: 0 }
                         }
                     }),
                     new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error("Timeout after 15s")), 15000)
+                        setTimeout(() => reject(new Error("Timeout after 20s")), 20000)
                     )
                 ]);
 
@@ -340,6 +341,8 @@ app.use((req, res, next) => {
     next();
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
