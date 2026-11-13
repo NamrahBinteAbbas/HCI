@@ -53,9 +53,45 @@ if (!fs.existsSync(DATA_DIR)) {
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-const PRIMARY_MODEL = "gemini-2.5-flash";
-const FALLBACK_MODEL = "gemini-2.5-flash-lite";
-const EMERGENCY_MODEL = "gemini-2.5-flash-lite";
+const MODELS_TO_TRY = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
+
+async function generateSafe(modelName, systemMessage, userMessage) {
+    // Try official @google/genai SDK first
+    try {
+        const result = await ai.models.generateContent({
+            model: modelName,
+            contents: userMessage,
+            config: systemMessage ? { systemInstruction: systemMessage } : undefined
+        });
+        if (result && result.text) return result.text;
+    } catch (sdkErr) {
+        console.warn(`SDK call failed for ${modelName}, trying direct REST:`, sdkErr.message);
+    }
+
+    // Direct REST fallback (works regardless of @google/genai version on Render)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
+    const payload = {
+        contents: [{ role: "user", parts: [{ text: userMessage }] }]
+    };
+    if (systemMessage) {
+        payload.systemInstruction = { parts: [{ text: systemMessage }] };
+    }
+
+    const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+        throw new Error(json?.error?.message || `Gemini HTTP ${resp.status}`);
+    }
+
+    const text = json?.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+    if (!text) throw new Error("Empty text from Gemini REST API");
+    return text;
+}
 
 async function ensureSheetHeaders() {
     if (!sheetsApi) throw new Error(sheetsInitError || "Sheets API not initialized.");
@@ -117,7 +153,25 @@ async function ensureSheetHeaders() {
     }
 }
 
-// 1. Diagnostic Endpoint: Visit /api/test-sheets in browser to verify & initialize tabs
+// Diagnostic 1: Test Gemini directly in browser (/api/test-gemini)
+app.get("/api/test-gemini", async (req, res) => {
+    const errors = {};
+    for (const modelName of MODELS_TO_TRY) {
+        try {
+            const reply = await generateSafe(
+                modelName,
+                'Return only valid JSON: {"full":"Hello","simple":["Hi"]}',
+                "Say hello"
+            );
+            return res.json({ status: "OK", workingModel: modelName, rawReply: reply });
+        } catch (err) {
+            errors[modelName] = err.message;
+        }
+    }
+    return res.status(500).json({ status: "ERROR", errors });
+});
+
+// Diagnostic 2: Test Google Sheets directly in browser (/api/test-sheets)
 app.get("/api/test-sheets", async (req, res) => {
     try {
         await ensureSheetHeaders();
@@ -129,24 +183,13 @@ app.get("/api/test-sheets", async (req, res) => {
     } catch (err) {
         return res.status(500).json({
             status: "ERROR",
-            exactError: err.message,
-            fixHint: err.message.includes("has not been used")
-                ? "Enable Google Sheets API in Google Cloud Console."
-                : err.message.includes("permission")
-                ? "Share the Google Sheet with sheets-logger@gen-lang-client-0281766804.iam.gserviceaccount.com as Editor."
-                : "Check GOOGLE_CREDENTIALS_JSON in Render Environment Variables."
+            exactError: err.message
         });
     }
 });
 
-// 2. Chat API Endpoint
+// Chat API Endpoint
 app.post("/api/chat", async (req, res) => {
-    req.setTimeout(60000, () => {
-        if (!res.headersSent) {
-            return res.status(504).json({ error: "Request timed out. Please try sending again." });
-        }
-    });
-
     try {
         const { messages } = req.body;
         if (!Array.isArray(messages) || messages.length === 0) {
@@ -157,61 +200,59 @@ app.post("/api/chat", async (req, res) => {
         const userMessage = messages.find(m => m.role === "user")?.content || "";
 
         let responseText = null;
-        let usedModel = PRIMARY_MODEL;
-        const modelsToTry = [PRIMARY_MODEL, FALLBACK_MODEL];
+        let usedModel = MODELS_TO_TRY[0];
+        let lastError = null;
 
-        for (const modelName of modelsToTry) {
+        for (const modelName of MODELS_TO_TRY) {
             try {
                 usedModel = modelName;
-                const result = await Promise.race([
-                    ai.models.generateContent({
-                        model: modelName,
-                        contents: userMessage,
-                        config: {
-                            systemInstruction: systemMessage,
-                            responseMimeType: "application/json",
-                            thinkingConfig: { thinkingBudget: 0 }
-                        }
-                    }),
-                    new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error("Timeout after 20s")), 20000)
-                    )
-                ]);
-
-                responseText = result.text;
+                responseText = await generateSafe(modelName, systemMessage, userMessage);
                 if (responseText) break;
             } catch (err) {
-                console.warn(`Model ${modelName} failed/timed out: ${err.message}`);
-                if (modelName === modelsToTry[modelsToTry.length - 1]) throw err;
+                lastError = err;
+                console.error(`Model ${modelName} error:`, err.message);
             }
         }
 
+        if (!responseText) {
+            return res.status(500).json({ error: lastError ? lastError.message : "All Gemini models failed." });
+        }
+
+        // Extract JSON object even if Gemini wraps it in markdown or extra text
         let cleanedText = responseText.trim()
             .replace(/^```json\s*/i, "")
             .replace(/^```\s*/, "")
             .replace(/\s*```$/, "");
 
+        const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) cleanedText = jsonMatch[0];
+
         let parsedJson;
         try {
             parsedJson = JSON.parse(cleanedText);
+            if (!parsedJson.full) parsedJson.full = cleanedText;
+            if (!Array.isArray(parsedJson.simple)) {
+                parsedJson.simple = parsedJson.full.split(/\.\s+/).filter(Boolean).slice(0, 4);
+            }
         } catch (e) {
-            parsedJson = { full: cleanedText, simple: [cleanedText] };
+            parsedJson = {
+                full: cleanedText,
+                simple: cleanedText.split(/\.\s+/).filter(Boolean).slice(0, 4)
+            };
         }
 
         return res.json({
             choices: [{ message: { content: JSON.stringify(parsedJson) } }],
-            usedModel: usedModel
+            usedModel
         });
 
     } catch (error) {
-        console.error("Gemini API Error:", error.message);
-        if (!res.headersSent) {
-            return res.status(500).json({ error: error.message || "Gemini processing failed." });
-        }
+        console.error("Gemini API Fatal Error:", error.message);
+        return res.status(500).json({ error: error.message || "Gemini processing failed." });
     }
 });
 
-// 3. Submit Completed Session & Write to Google Sheets
+// Submit Completed Session & Write to Google Sheets
 app.post("/api/submit-session", async (req, res) => {
     try {
         const data = req.body;
@@ -221,10 +262,6 @@ app.post("/api/submit-session", async (req, res) => {
 
         const filePath = path.join(DATA_DIR, `${data.pid}_${Date.now()}.json`);
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-
-        console.log("=== PARTICIPANT SESSION DATA START ===");
-        console.log(JSON.stringify(data));
-        console.log("=== PARTICIPANT SESSION DATA END ===");
 
         if (sheetsApi) {
             await ensureSheetHeaders();
@@ -284,8 +321,6 @@ app.post("/api/submit-session", async (req, res) => {
                     resource: { values: roundRows }
                 });
             }
-
-            console.log(`Saved participant ${data.pid} to Google Sheets.`);
         }
 
         return res.json({ status: "success", sheetsSaved: !!sheetsApi });
@@ -295,7 +330,7 @@ app.post("/api/submit-session", async (req, res) => {
     }
 });
 
-// 4. Safe Live Admin Dashboard API
+// Safe Live Admin Dashboard API
 app.get("/api/admin/all-responses", async (req, res) => {
     try {
         if (sheetsApi) {
@@ -333,7 +368,7 @@ app.get("/api/admin/all-responses", async (req, res) => {
     }
 });
 
-// 5. Fallback Middleware
+// Fallback Middleware
 app.use((req, res, next) => {
     if (req.method === "GET") {
         return res.sendFile(path.join(__dirname, "public", "index.html"));
