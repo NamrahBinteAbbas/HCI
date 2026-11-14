@@ -53,7 +53,8 @@ if (!fs.existsSync(DATA_DIR)) {
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-const MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
+// Models are tried in order. Override on Render with GEMINI_MODELS="modelA,modelB" (no code change needed).
+const MODELS_TO_TRY = (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.5-flash-lite").split(",").map(m => m.trim()).filter(Boolean);
 
 async function generateSafe(modelName, systemMessage, userMessage) {
     try {
@@ -150,6 +151,96 @@ async function ensureSheetHeaders() {
         });
     }
 }
+
+// ======================= AUDIT LOG (every user action) =======================
+// The browser sends batches of events here every few seconds, so nothing is lost
+// if a participant closes the tab before the final questionnaire.
+const AUDIT_DIR = path.join(DATA_DIR, "audit");
+if (!fs.existsSync(AUDIT_DIR)) fs.mkdirSync(AUDIT_DIR, { recursive: true });
+const AUDIT_HEAD = ["participant_id", "timestamp_iso", "elapsed_ms", "event_type", "round_position", "round", "condition", "task_id", "support_level", "details_json"];
+let auditSheetReady = false;
+
+async function ensureAuditSheet() {
+    if (!sheetsApi || auditSheetReady) return;
+    const meta = await sheetsApi.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    if (!meta.data.sheets.some(s => s.properties.title === "Audit Log")) {
+        await sheetsApi.spreadsheets.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            resource: { requests: [{ addSheet: { properties: { title: "Audit Log" } } }] }
+        });
+        await sheetsApi.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: "Audit Log!A1",
+            valueInputOption: "RAW",
+            resource: { values: [AUDIT_HEAD] }
+        });
+    }
+    auditSheetReady = true;
+}
+
+app.post("/api/log-events", async (req, res) => {
+    const { pid, t0, events } = req.body || {};
+    if (!pid || !/^[A-Z0-9_-]{2,20}$/.test(pid) || !Array.isArray(events)) {
+        return res.status(400).json({ error: "Invalid audit payload." });
+    }
+    const start = Number(t0) || 0;
+    const rows = events
+        .filter(e => Array.isArray(e) && Number.isFinite(e[0]))
+        .slice(0, 5000)
+        .map(e => [
+            pid, new Date(e[0]).toISOString(), start ? e[0] - start : 0, e[1], e[2], e[3], e[4], e[5], e[6],
+            JSON.stringify(e[7] === undefined ? null : e[7]).slice(0, 4000)
+        ]);
+    if (!rows.length) return res.json({ status: "empty", saved: 0 });
+
+    let fileSaved = false, sheetsSaved = false;
+    try {
+        fs.appendFileSync(path.join(AUDIT_DIR, pid + ".jsonl"), rows.map(r => JSON.stringify(r)).join("\n") + "\n");
+        fileSaved = true;
+    } catch (err) {
+        console.error("Audit file write failed:", err.message);
+    }
+    if (sheetsApi) {
+        try {
+            await ensureAuditSheet();
+            await sheetsApi.spreadsheets.values.append({
+                spreadsheetId: SPREADSHEET_ID,
+                range: "Audit Log!A:J",
+                valueInputOption: "RAW",
+                resource: { values: rows.map(r => r.map(v => (v == null ? "" : v))) }
+            });
+            sheetsSaved = true;
+        } catch (err) {
+            console.error("Audit Sheets write failed:", err.message);
+        }
+    }
+    if (!fileSaved && !sheetsSaved) return res.status(500).json({ error: "Could not save audit events." });
+    return res.json({ status: "success", saved: rows.length, fileSaved, sheetsSaved });
+});
+
+app.get("/api/admin/audit-log", async (req, res) => {
+    try {
+        let rows = [];
+        if (sheetsApi) {
+            try {
+                const r = await sheetsApi.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: "Audit Log!A2:J" });
+                rows = r.data.values || [];
+            } catch (err) {
+                console.warn("Audit Sheets read skipped:", err.message);
+            }
+        }
+        if (!rows.length && fs.existsSync(AUDIT_DIR)) {
+            rows = fs.readdirSync(AUDIT_DIR)
+                .filter(f => f.endsWith(".jsonl"))
+                .flatMap(f => fs.readFileSync(path.join(AUDIT_DIR, f), "utf-8").split("\n").filter(Boolean)
+                    .map(l => { try { return JSON.parse(l); } catch (e) { return null; } })
+                    .filter(Boolean));
+        }
+        return res.json(rows);
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
 
 // Diagnostic 1: Test Gemini directly in browser (/api/test-gemini)
 app.get("/api/test-gemini", async (req, res) => {
