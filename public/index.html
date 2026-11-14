@@ -95,8 +95,8 @@ textarea{min-height:112px;resize:vertical;line-height:1.5}.row{display:flex;flex
 <script>
 "use strict";
 // ============================ 1. CONFIGURATION ============================
-const AI_MODEL = "gemini-2.5-flash";
-const AI_FALLBACK_MODEL = "gemini-2.5-flash-lite";
+const AI_MODEL = "gemini-3.8-flash";
+const AI_FALLBACK_MODEL = "gemini-3.5-flash-lite";
 const REASONING_EFFORT = "";
 const ENABLE_PROMPT_JUDGE=false;
 const MAX_API_ATTEMPTS=4,RETRY_DELAYS_MS=[1500,3000,6000];
@@ -131,6 +131,17 @@ function persist(imm){const P=S.P;if(!P)return;clearTimeout(st);
  const f=()=>{try{localStorage.setItem(PK+P.pid,JSON.stringify(P));const l=idxList();if(!l.includes(P.pid)){l.push(P.pid);localStorage.setItem(IDXK,JSON.stringify(l))}$("store").textContent=""}catch(e){$("store").textContent="WARNING: could not save in browser storage."}};
  imm?f():st=setTimeout(f,1000)}
 function log(name,d){const P=S.P;if(!P)return;P.ev.push([Date.now(),name,S.pos,S.label,S.cond,S.task,S.level,d===undefined?null:d]);persist()}
+// Audit log upload: send new events to the server every 8 s, after each round, and when the tab is hidden or closed.
+S.flushed=0;S.flushing=false;
+function flushLog(beacon){const P=S.P;if(!P)return;const end=P.ev.length,batch=P.ev.slice(S.flushed,end);if(!batch.length)return;
+ const body=JSON.stringify({pid:P.pid,t0:P.t0,events:batch});
+ if(beacon&&navigator.sendBeacon){if(navigator.sendBeacon("/api/log-events",new Blob([body],{type:"application/json"})))S.flushed=end;return}
+ if(S.flushing)return;S.flushing=true;
+ fetch("/api/log-events",{method:"POST",headers:{"Content-Type":"application/json"},body,keepalive:true})
+  .then(r=>{if(r.ok&&S.flushed<end)S.flushed=end}).catch(()=>{}).finally(()=>{S.flushing=false})}
+setInterval(()=>flushLog(false),8000);
+addEventListener("pagehide",()=>flushLog(true));
+document.addEventListener("visibilitychange",()=>{if(!S.P)return;log(document.hidden?"tab_hidden":"tab_visible");if(document.hidden)flushLog(true)});
 function showScreen(id){document.querySelectorAll(".screen").forEach(s=>s.hidden=s.id!==id)}
 function mk(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
 function addChip(parent,label,fn){const b=mk("button","chip small",label);b.type="button";b.addEventListener("click",fn);parent.appendChild(b)}
@@ -175,6 +186,7 @@ async function callAI(prompt, system, onRetry = () => {}, model = AI_MODEL) {
             continue;
         }
 
+        if (data && data.usedModel) S.usedModel = data.usedModel;
         const text = data?.choices?.[0]?.message?.content?.trim();
         if (!text) throw new Error("The assistant returned an empty response.");
         try { return JSON.parse(text); } catch { throw new Error("The assistant returned invalid JSON."); }
@@ -188,11 +200,12 @@ async function callWithFallback(prompt,system,onRetry=()=>{}){
 
 function explainApiError(m){
  if(/quota|billing/i.test(m))return"The Google Gemini API quota or rate limit was reached. Please tell the researcher.";
+ if(/HTTP 404: Unknown API error/.test(m))return"This page cannot reach the app server (the /api/chat address was not found). Please tell the researcher to open the app from the server link, not as a saved file or through a static host.";
+ if(/HTTP 404/.test(m)||(/not found|not supported/i.test(m)&&/models?\//i.test(m)))return"Gemini could not find the configured model. Please tell the researcher. Details: "+m;
  if(/HTTP 5\d\d/.test(m))return"The assistant service is busy ("+m.slice(0,9)+"). Please wait a moment and press Send again.";
  if(/HTTP 429/.test(m))return"The Gemini API rate limit was exceeded. Please wait a moment and press Send again.";
  if(/HTTP 401/.test(m))return"Gemini could not accept the API key. Please tell the researcher.";
  if(/HTTP 403/.test(m))return"This API key does not have access to that model. Please tell the researcher. Details: "+m;
- if(/HTTP 404/.test(m))return"Gemini could not find the configured model. Please tell the researcher. Details: "+m;
  if(/HTTP 400/.test(m))return"Gemini rejected the request settings. Please tell the researcher. Details: "+m;
  return m}
 
@@ -304,7 +317,7 @@ function startRound(i){const pl=S.P.plan[i],T=TASKS[pl.task];setCtx(pl);
  T.c.forEach((txt,n)=>{const l=mk("label","inline"),cb=document.createElement("input");cb.type="checkbox";cb.addEventListener("change",e=>{S.cur.check[n]=e.target.checked;log("checklist",{index:n,item:txt,achieved:e.target.checked})});l.append(cb,mk("span","",txt));$("chk").appendChild(l)});
  log("round_start",{taskVersion:T.v,supportLevel:S.level});renderSupport();$("inp").focus()}
 function endRound(reason){const c=S.cur;if(!c)return;c.durMs=Math.round(now()-S.roundStart);c.status=reason==="done"?"completed":"skipped";c.levelEnd=S.level;c.end=new Date().toISOString();
- log("round_end",{reason,durationMs:c.durMs});clearTimeout(otm);S.offer=false;persist(true);["A","B","C"].includes(c.cond)?showFeedback():nextRound()}
+ log("round_end",{reason,durationMs:c.durMs});flushLog();clearTimeout(otm);S.offer=false;persist(true);["A","B","C"].includes(c.cond)?showFeedback():nextRound()}
 function nextRound(){S.RI<4?showIntro(S.RI+1):showFinal()}
 $("skip").addEventListener("click",()=>{if(!$("s-task").hidden)endRound("skipped")});
 
@@ -407,7 +420,9 @@ $("fqDone").addEventListener("click", async () => {
     S.P.status = "completed";
     S.P.completed = new Date().toISOString();
     log("final_questionnaire", o);
+    log("session_submitted", { status: "completed" });
     persist(true);
+    flushLog();
 
     const btn = $("fqDone");
     btn.disabled = true;
@@ -468,7 +483,7 @@ async function loadAdminDashboard() {
         let html = `
             <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <strong>Total Participants: ${sessions.length}</strong>
-                <button class="primary small" id="downloadServerCsv">Download Excel CSVs</button>
+                <span><button class="primary small" id="downloadServerCsv">Download Excel CSVs</button> <button class="small" id="viewAudit">View audit log</button> <button class="small" id="downloadAudit">Download audit log CSV</button></span>
             </div>
             <div style="max-height: 350px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px;">
             <table class="pt">
@@ -498,7 +513,7 @@ async function loadAdminDashboard() {
             `;
         });
 
-        html += `</tbody></table></div>`;
+        html += `</tbody></table></div><div id="auditView" style="margin-top:12px"></div>`;
         listContainer.innerHTML = html;
 
         $("downloadServerCsv").addEventListener("click", () => {
@@ -506,6 +521,38 @@ async function loadAdminDashboard() {
             setTimeout(() => dlCSV("all_participant_summary_" + Date.now() + ".csv", SH, sessions.map(summaryRow)), 400);
         });
 
+
+        async function fetchAudit() {
+            const r = await fetch("/api/admin/audit-log");
+            if (!r.ok) throw new Error("Could not load the audit log");
+            return await r.json();
+        }
+        $("downloadAudit").addEventListener("click", async () => {
+            try {
+                const rows = await fetchAudit();
+                if (!rows.length) { alert("No audit events have been saved yet."); return; }
+                dlCSV("audit_log_" + Date.now() + ".csv", LH, rows);
+            } catch (e) { alert(e.message); }
+        });
+        $("viewAudit").addEventListener("click", async () => {
+            const v = $("auditView");
+            v.innerHTML = "<p class='muted'>Loading audit log...</p>";
+            try {
+                const rows = await fetchAudit();
+                const pids = [...new Set(rows.map(r => r[0]))];
+                v.innerHTML = '<label>Participant <select id="auditPid"><option value="">All</option>' + pids.map(p => "<option>" + esc(p) + "</option>").join("") + '</select></label> <label><input type="checkbox" id="auditKeys"> include keystrokes</label><div id="auditTbl" style="max-height:320px;overflow:auto;margin-top:8px"></div>';
+                const draw = () => {
+                    const p = $("auditPid").value, k = $("auditKeys").checked;
+                    const sel = rows.filter(r => (!p || r[0] === p) && (k || r[3] !== "key"));
+                    $("auditTbl").innerHTML = '<table class="pt"><thead><tr><th>PID</th><th>Time (s)</th><th>Event</th><th>Round</th><th>Level</th><th>Details</th></tr></thead><tbody>'
+                        + sel.slice(-500).map(r => "<tr><td>" + esc(r[0]) + "</td><td>" + (Number(r[2]) / 1000).toFixed(1) + "</td><td>" + esc(r[3]) + "</td><td>" + esc(r[5]) + "</td><td>" + esc(r[8]) + "</td><td>" + esc(String(r[9] || "").slice(0, 160)) + "</td></tr>").join("")
+                        + "</tbody></table><p class='muted'>Showing the latest " + Math.min(sel.length, 500) + " of " + sel.length + " events. Download the CSV for everything.</p>";
+                };
+                $("auditPid").addEventListener("change", draw);
+                $("auditKeys").addEventListener("change", draw);
+                draw();
+            } catch (e) { v.innerHTML = "<p class='error'>" + esc(e.message) + "</p>"; }
+        });
     } catch (err) {
         listContainer.innerHTML = `<p class="error">Error loading responses: ${esc(err.message)}</p>`;
     }
@@ -518,5 +565,6 @@ function observerMark(){log("observer_struggle");$("sig").textContent="Observer 
 $("obs").addEventListener("click",observerMark);
 document.addEventListener("keydown",e=>{if(e.key==="F8"){e.preventDefault();observerMark()}
  if(e.key==="F9"){e.preventDefault();const p=$("research-tools");p.hidden=!p.hidden;if(!p.hidden){loadAdminDashboard();p.open=true}}});
+$("inp").addEventListener("paste",e=>{const t=(e.clipboardData&&e.clipboardData.getData("text"))||"";log("paste",{chars:t.length})});
 const pre=new URLSearchParams(location.search).get("pid");if(pre)$("pid").value=pre;
 </script></body></html>
