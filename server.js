@@ -56,15 +56,30 @@ app.use(express.static(path.join(__dirname, "public")));
 // Models are tried in order. Override on Render with GEMINI_MODELS="modelA,modelB" (no code change needed).
 const MODELS_TO_TRY = (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.5-flash-lite").split(",").map(m => m.trim()).filter(Boolean);
 
+// Speed controls: give up on a slow model quickly and skip a busy model for a short time.
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 15000;
+const modelCooldown = {};
+const SKIP_REST_RE = /503|UNAVAILABLE|high demand|429|quota|RESOURCE_EXHAUSTED|404|not found|no longer available|timed out/i;
+
+function withTimeout(promise, ms, label) {
+    let timer;
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms); })
+    ]).finally(() => clearTimeout(timer));
+}
+
 async function generateSafe(modelName, systemMessage, userMessage) {
     try {
-        const result = await ai.models.generateContent({
+        const result = await withTimeout(ai.models.generateContent({
             model: modelName,
             contents: userMessage,
             config: systemMessage ? { systemInstruction: systemMessage } : undefined
-        });
+        }), GEMINI_TIMEOUT_MS, modelName);
         if (result && result.text) return result.text;
     } catch (sdkErr) {
+        // Busy, over-quota, missing or slow models: do not repeat the same call a second way, move on.
+        if (SKIP_REST_RE.test(sdkErr.message || "")) throw sdkErr;
         console.warn(`SDK call failed for ${modelName}, trying direct REST:`, sdkErr.message);
     }
 
@@ -79,7 +94,8 @@ async function generateSafe(modelName, systemMessage, userMessage) {
     const resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS)
     });
 
     const json = await resp.json().catch(() => ({}));
@@ -292,7 +308,11 @@ app.post("/api/chat", async (req, res) => {
         let usedModel = MODELS_TO_TRY[0];
         let lastError = null;
 
-        for (const modelName of MODELS_TO_TRY) {
+        const now = Date.now();
+        let order = MODELS_TO_TRY.filter(m => !(modelCooldown[m] > now));
+        if (!order.length) order = MODELS_TO_TRY;
+
+        for (const modelName of order) {
             try {
                 usedModel = modelName;
                 responseText = await generateSafe(modelName, systemMessage, userMessage);
@@ -300,6 +320,7 @@ app.post("/api/chat", async (req, res) => {
             } catch (err) {
                 lastError = err;
                 console.error(`Model ${modelName} error:`, err.message);
+                if (SKIP_REST_RE.test(err.message || "")) modelCooldown[modelName] = Date.now() + 60000;
             }
         }
 
