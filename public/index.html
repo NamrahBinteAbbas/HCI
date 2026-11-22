@@ -2,8 +2,8 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ask Assistant</title>
-<link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)"><link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
-<link href="[https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap](https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap)" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root{color-scheme:light;--page:#f2f6f8;--surface:#fff;--ink:#172733;--muted:#5d6d78;--line:#d7e0e5;--brand:#12637a;--brand-dark:#0c4a5c;--brand-soft:#e8f3f6;--help:#fff8e7;--help-line:#e7bd58;--success:#23764e;--danger:#a52b25;--shadow:0 8px 28px rgba(23,39,51,.07);box-sizing:border-box}
 *,*::before,*::after{box-sizing:inherit}html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -116,7 +116,7 @@ const TASKS={
 const STARTERS=["Help me write a message to ___","Explain ___ in simple words","Give me steps to ___"];
 const WIZARD_STEPS=[{q:"What do you want help with?",options:["Writing something","Understanding something","Planning something","Making something"]},{q:"Who is it for, or why do you need it?",options:["For myself","For a family member","For a neighbour or friend","For an office or bank"]},{q:"How should the answer look?",options:["Short and simple","Step by step","A bulleted list","One paragraph"]}];
 const INTRO={PRE:"In this round the assistant will help you with an everyday task. Write your question the way you normally would. No extra tips will appear.",A:"In this round no extra tips will appear. Write your question the way you normally would.",B:"In this round helpful tips may appear while you write. You can ask for more or less help at any time.",C:"In this round helpful tips are shown while you write.",POST:"In this last round the assistant will help you with another everyday task. Write your question the way you normally would. No extra tips will appear."};
-const ASSISTANT_INSTRUCTIONS='You help older adults use AI. Answer the user\'s request in plain, friendly English. If the request is too vague to answer well, ask ONE short clarifying question. Return only valid JSON with this shape: {"full":"3 to 6 short plain-English sentences","simple":["3 to 4 very short points or steps"]}.';
+const ASSISTANT_INSTRUCTIONS='You help older adults use AI. Fulfill the user\'s request completely in plain, friendly English. If they ask you to write a message, email, or steps, ALWAYS include the complete ready-to-use message, email, or full step-by-step instructions inside "full"—never just describe what a message could say. If the request is too vague to answer well, ask ONE short clarifying question. Return only valid JSON with this exact shape: {"full":"complete helpful response including the full draft message or full steps","simple":["4 to 6 short clear points or steps including the key message text"]}.';
 const JUDGE_INSTRUCTIONS='Rate the user\'s prompt to an AI assistant. goal: says clearly what is wanted (0 or 1). audience: says who it is for or why (0 or 1). format: says how the answer should look (0 or 1). Return only JSON: {"goal":0,"audience":0,"format":0}.';
 
 const S={P:null,RI:-1,cur:null,pos:0,label:"setup",cond:"",task:"",mode:"A",level:0,streak:0,probe:false,cool:0,out:0,cons:0,maxIdx:0,ep:null,last:0,keys:[],thr:2000,busy:false,wiz:0,ans:["","",""],offer:false,undo:null,lastSub:null,idx:0,B:null,roundStart:0};
@@ -348,7 +348,7 @@ function renderAnswer(box, r, rec) {
     const draw = () => {
         let html = (simple 
             ? "<ul>" + pts.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" 
-            : "<p>" + esc(rec.resp.full || "I could not create an answer. Please try asking in a different way.") + "</p>")
+            : '<p style="white-space:pre-line">' + esc(rec.resp.full || "I could not create an answer. Please try asking in a different way.") + "</p>")
             + (S.mode !== "A" && pts.length ? '<button class="small toggle">' + (simple ? "Show full version" : "Show simpler version") + "</button>" : "");
 
         if (S.mode === "A") {
