@@ -336,17 +336,17 @@ app.post("/api/chat", async (req, res) => {
         const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
         if (jsonMatch) cleanedText = jsonMatch[0];
 
-        let parsedJson;
+      let parsedJson;
         try {
             parsedJson = JSON.parse(cleanedText);
             if (!parsedJson.full) parsedJson.full = cleanedText;
-            if (!Array.isArray(parsedJson.simple)) {
-                parsedJson.simple = parsedJson.full.split(/\.\s+/).filter(Boolean).slice(0, 4);
+            if (!Array.isArray(parsedJson.simple) || parsedJson.simple.length === 0) {
+                parsedJson.simple = parsedJson.full.split(/\n+|(?<=\.)\s+/).filter(Boolean);
             }
         } catch (e) {
             parsedJson = {
                 full: cleanedText,
-                simple: cleanedText.split(/\.\s+/).filter(Boolean).slice(0, 4)
+                simple: cleanedText.split(/\n+|(?<=\.)\s+/).filter(Boolean)
             };
         }
 
